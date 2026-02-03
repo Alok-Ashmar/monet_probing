@@ -1,0 +1,10 @@
+key.txt
+/.venv/
+/venv/
+*.pyc
+requirements.txt
+/server/notebooks/
+*.env
+/scripts/
+.vscode/launch.json
+.vscode/settings.json
