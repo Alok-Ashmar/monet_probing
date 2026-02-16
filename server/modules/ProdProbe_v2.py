@@ -1,13 +1,15 @@
 import pytz
 from bson import ObjectId
 from datetime import datetime
+from langsmith import traceable
 from typing import AsyncIterable
-from modules.MongoWrapper import monet_db
 from modules.LLMAdapter import LLMAdapter
+from modules.MongoWrapper import monet_db
 from modules.ServerLogger import ServerLogger
 from models.Survey import PySurvey, PySurveyQuestion
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 india = pytz.timezone('Asia/Kolkata')
 logger = ServerLogger()
@@ -27,7 +29,7 @@ class Probe(LLMAdapter):
         simple_store=False,
         session_no:int = 0,
         ):
-        super().__init__(metadata.config.llm, 0.65, streaming=True)
+        super().__init__(metadata.config.llm, 0.7, streaming=True)
         self.id = f"{metadata.id}-{question.id}-{mo_id}"
         self.__metric_llm__ = self.llm.with_structured_output(NSIGHT)
         self.metadata = metadata
@@ -43,47 +45,29 @@ class Probe(LLMAdapter):
         if question.config.probes > question.config.max_probes:
             self.invalid = True
 
-        self.conversation = []
-
         self.__prompt_chunks__ = {
-            "main-chk": """
-                You are a video analysis partner. Your goal is to extract truth from the user's input based *strictly* on the provided context description, while **mirroring the user's level of specificity**.
-                    1. **Valid/General Subject:** If the user uses general terms (e.g., "the actor", "the music"), ask a detail question using those SAME general terms. **DO NOT** insert specific character/actor names from context unless the user wrote them first.
-                    2. **Mixed Subject (Real + Fake):** If the user links an unverified subject with a verified one, **IGNORE the unverified subject** and ask only about the verified one.
-                    3. **Purely Fake/Off-Topic:** If the user *only* mentions a person/object NOT in the context, you MUST ask: "Where did you notice [Subject] in **[Video Title]**?".""",
-
+            "main-chk": """You are an expert survey moderator. Your task is to generate a single, concise follow-up question based on the provided inputs.""",
             "rule-chk": """
-                Subject Verification Logic (MANDATORY)
-                    - **Scenario A: Purely On-Topic / General**
-                    (User mentions verified elements or general concepts like 'the actor', 'the setting')
-                    -> Action: Ask a natural follow-up about visual/audio details.
-                    -> **CRITICAL:** Use generic terms (e.g., "the performer", "that character"). **NEVER** swap a general word for a specific name (e.g., do NOT say the Actor's Name) unless the user named them first.
+                Logic & Instructions:
+                    Analyze the User Response against the Original Question, Intended Purpose, and Survey Description.
 
-                    - **Scenario B: Mixed Input (Verified + Unverified)**
-                    (User links a correct element with an incorrect/hallucinated one)
-                    -> Action: The user is adding false details. **Pivot immediately to the Verified element.**
-                    -> Example: "What specific details of **[Verified Subject's]** performance stood out in that moment?" (Ignore the incorrect part).
+                    SCENARIO A: The response is relevant.
+                    - If the response aligns with the Intended Purpose, generate a follow-up that explores the User Response more deeply.
+                    - Goal: Uncover specific details, feelings, or reasons behind their answer.
 
-                    - **Scenario C: Purely Off-Topic**
-                    (User mentions a person/object completely absent from the context)
-                    -> Action: Challenge them using the Video Title from the context.
-                    -> Example: "Where did you notice [Unverified Subject] *in [Video Title]*?"
+                    SCENARIO B: The response is irrelevant/off-topic.
+                    - If the response does not match the Original Question or falls outside the Survey Description, generate a follow-up that politely steers the user back to the Original Question.
+                    - Goal: Redirect focus without offering specific ideas, examples, or answers.
 
-                Stay Anchored
-                    - Keep the conversation relevant to the original question.
-                    - Do not introduce new themes or interpretations.
-                    - If on topic, use user's last idea to build your follow-up.
-                    - Redirect to original question's intent/context if user diverts too much away from the topic.
-                    - Do not validate hallucinations.
+                    Constraints:
+                    - Length: Maximum 15 words.
+                    - Context: Strictly adhere to the Survey Description. Do not hallucinate scenarios or assume facts not present in the description.
+                    - Format: Single sentence only. No multi-part questions. No generic "Tell me more."
+                    - Tone: Neutral, curious, and encouraging.
 
-                Ask One Clear Question
-                    - Keep it short (max 15 words).
-                    - No multi-part questions.
-                    - Avoid emotional or symbolic language unless the user introduces it.
+                    Output: [Generate only the follow-up question]
 
-                Encourage Elaboration
-                    - Provide hints and contexts subtly wherever required.
-                    - Focus on visible evidence.
+                    Inputs:
             """
         }
 
@@ -105,10 +89,7 @@ class Probe(LLMAdapter):
                 template = """
                     {main_prompt}
                     
-                    <!-- Survey Description -->
-                    {survey_description}
-                    <!-- Survey Description -->
-                    
+                    **Survey Description**: {survey_description}
                 """
             ).invoke(
                 {
@@ -123,11 +104,9 @@ class Probe(LLMAdapter):
                 template = """
                     {main_prompt}
                     
-                    **Original Question**
-                    {original_question}
+                    **Original Question**: {original_question}
                     
-                    **Question's Intended Purpose**
-                    {question_context}
+                    **Question's Intended Purpose**: {question_context}
                 """
             ).invoke(
                 {
@@ -141,8 +120,7 @@ class Probe(LLMAdapter):
                 template = """
                     {main_prompt}
                     
-                    **Original Question**
-                    {original_question}
+                    **Original Question**: {original_question}
                 """
             ).invoke(
                 {
@@ -166,25 +144,49 @@ class Probe(LLMAdapter):
                 }
             ).text
         
-        self.conversation.append(("system", self.__system_prompt__))
+        self._history = []
+        self._ensure_system_message()
 
+    def _ensure_system_message(self):
+        if not self._history:
+            self._history.append(SystemMessage(content=self.__system_prompt__))
+
+    async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict):
+        full_content = ""
+        async for chunk in chain.astream(inputs, config=run_config):
+            content = chunk.content if hasattr(chunk, "content") else str(chunk)
+            full_content += content
+            yield chunk
+        if full_content:
+            self._history.append(AIMessage(content=full_content))
+
+    @traceable(run_type="chain", name="Gen Streamed Follow Up")
     def gen_streamed_follow_up(self, question: str, response: str) -> tuple[AsyncIterable[str], AsyncIterable[NSIGHT]]:
-        # handle response
-        self.conversation.append(("user", """Response {question_num}. {response_text}""")) # Add this user response
-        prompt = ChatPromptTemplate.from_messages(self.conversation)
+        next_counter = self.counter + 1
+        user_text = f"User Response: {next_counter}. {response}"
+        self._history.append(HumanMessage(content=user_text))
+        self.counter = next_counter
+        prompt = ChatPromptTemplate.from_messages(self._history)
         chain = prompt | self.llm
         metric_chain = prompt | self.__metric_llm__
 
-        llm_stream: str = chain.astream({
-            "question_num": self.counter + 1,
-            "response_text": response
-        })
-        metric_llm_stream: NSIGHT = metric_chain.astream({
-            "question_num": self.counter + 1,
-            "response_text": response
-        })
+        # Define metadata for tracing (User ID, Survey ID, Question ID)
+        run_config = {
+            "metadata": {
+                "mo_id": self.mo_id,
+                "su_id": str(self.su_id),
+                "qs_id": str(self.qs_id),
+                "session_no": self.session_no
+            },
+            "tags": ["probe", "websocket"]
+        }
+
+        llm_stream: str = self._stream_with_history_update(chain, {}, run_config)
+        
+        metric_llm_stream: NSIGHT = metric_chain.astream({}, config={**run_config, "tags": ["metrics", "websocket"]})
         return (llm_stream, metric_llm_stream)
 
+    @traceable(run_type="tool", name="Store Response")
     def store_response(self, nsight_v2: NSIGHT_v2, session_no: int):
         now_india = datetime.now(india)
         insert_one_res = QnAs.insert_one({

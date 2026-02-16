@@ -56,7 +56,7 @@ async def websocket_ai_qa(websocket: WebSocket):
                     probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=0)
                     probes[key] = probe
                 if survey_response.question == question.question:
-                    session_no = probe.session_no +1
+                    session_no = probe.session_no + 1
                     probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=session_no)
                     probes[key] = probe   
 

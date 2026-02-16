@@ -2,6 +2,7 @@ import os
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
+from langsmith.wrappers import wrap_openai
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 
@@ -40,7 +41,12 @@ class LLMAdapter:
                 streaming=streaming
             )
         elif llm_name == "llama":
-            self.__llama_client = OpenAI(api_key=LLAMA_API_KEY, base_url=LLAMA_API_URL, streaming=streaming)
+            # Wrap the raw client to enable LangSmith tracing
+            self.__llama_client = wrap_openai(OpenAI(
+                api_key=LLAMA_API_KEY, 
+                base_url=LLAMA_API_URL,
+                streaming=streaming
+            ))
         elif llm_name == "ollama-mistral":
             self.llm = ChatOllama(model="dolphin-mistral", temperature=temperature, streaming=streaming)
         elif llm_name == "ollama-tiny-llama":
