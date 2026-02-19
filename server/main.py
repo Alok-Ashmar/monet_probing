@@ -7,25 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 env_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(env_path)
 
-# - modules
-from modules.MongoWrapper import monet_db
-from modules.ServerLogger import ServerLogger
-
 # - routes
 from routes.websocket import websocket_router, probes
 
-# -- Logger
-logger = ServerLogger()
-mo_sessions = {}
-
-# -- Database Collections
-DbQnA = monet_db.get_collection("QnAs")
-DbSurvey = monet_db.get_collection("surveys")
-DbSurveyQuestion = monet_db.get_collection("survey-questions")
-requests_collection = monet_db.get_collection("requests_access")
-
 description = """
-## Monet-Intern-Effort
+Monet-Intern-Effort
 Server function
 
 This is *intern AI server that exposing various intelligent services**.
@@ -33,7 +19,7 @@ This is *intern AI server that exposing various intelligent services**.
 
 # FastAPI app initialization
 app = FastAPI(
-    root_path="/v4/" if os.environ.get("ENV") == "production" else "",
+    root_path="/v7/" if os.environ.get("ENV") == "production" else "",
     title="Monet Networks AI Server",
     description=description,
     summary="Monet Networks AI server that exposes interface to various AI based models.",
