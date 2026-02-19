@@ -53,11 +53,11 @@ async def websocket_ai_qa(websocket: WebSocket):
                 if key in probes:
                     probe = probes[key]
                 else:
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=0)
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=0, survey_details=survey_response)
                     probes[key] = probe
                 if survey_response.question == question.question:
                     session_no = probe.session_no + 1
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=session_no)
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=session_no, survey_details=survey_response)
                     probes[key] = probe   
 
                 # Generate follow-up using the probe
@@ -102,8 +102,8 @@ async def websocket_ai_qa(websocket: WebSocket):
                     probe.store_response(nsight_v2, session_no)
                     
             except Exception as e:
-                logger.err("Error in websocket AI QA:")
-                logger.err(e)
+                logger.error("Error in websocket AI QA:")
+                logger.error(e)
                 await websocket.send_json({
                     "error": True,
                     "message": str(e),
@@ -113,6 +113,6 @@ async def websocket_ai_qa(websocket: WebSocket):
     except WebSocketDisconnect:
         logger.info(f"Client disconnected")
     except Exception as e:
-        logger.err(f"WebSocket error:")
-        logger.err(e)
+        logger.error(f"WebSocket error:")
+        logger.error(e)
         await websocket.close(code=1011, reason="Internal server error")

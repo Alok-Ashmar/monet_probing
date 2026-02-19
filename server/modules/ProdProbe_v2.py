@@ -1,14 +1,16 @@
 import os
 import pytz
+from redis import Redis
 from bson import ObjectId
 from datetime import datetime
 from langsmith import traceable
 from typing import AsyncIterable
+from utils.intent import extract_intent
 from modules.MongoWrapper import monet_db
 from modules.LLMAdapter import LLMAdapter
 from modules.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
-from models.Survey import PySurvey, PySurveyQuestion
+from models.Survey import PySurvey, PySurveyQuestion, SurveyResponse
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
@@ -30,6 +32,7 @@ class Probe(LLMAdapter):
         question: PySurveyQuestion, # survey question ref
         simple_store=False,
         session_no:int = 0,
+        survey_details: SurveyResponse = None,
         ):
         super().__init__(metadata.config.llm, 0.7, streaming=True)
         self.id = f"{metadata.id}-{question.id}-{mo_id}"
@@ -43,6 +46,7 @@ class Probe(LLMAdapter):
         self.qs_id = ObjectId(question.id)
         self.ended = False
         self.session_no = session_no
+        self.survey_details = survey_details
 
         if question.config.probes > question.config.max_probes:
             self.invalid = True
@@ -101,6 +105,12 @@ class Probe(LLMAdapter):
                 }
             ).text
     
+        self._history_redis_url = os.environ.get(
+            "REDIS_URL",
+            "redis://localhost:6379/0"
+        )
+        self._redis = Redis.from_url(self._history_redis_url)
+
         # survey level context (switch)
         if self.metadata.config.add_context:
             self.__system_prompt__ = PromptTemplate(
@@ -119,6 +129,18 @@ class Probe(LLMAdapter):
 
         # survey question level context (switch) 
         if self.question.config.add_context:
+            extracted_intent = extract_intent(
+                question_description=self.question.description,
+                question_text=self.question.question,
+                survey_details=self.survey_details,
+                invoke_fn=self.invoke,
+                logger=logger,
+                redis_client=self._redis,
+                ttl_seconds=int(os.environ.get("REDIS_TTL_SECONDS_INTENT", 86400)) # 24 hours
+            )
+            if not extracted_intent:
+                extracted_intent = self.question.description
+
             self.__system_prompt__ = PromptTemplate(
                 template = """
                     {main_prompt}
@@ -131,7 +153,7 @@ class Probe(LLMAdapter):
                 {
                     "main_prompt": self.__system_prompt__,
                     "original_question": self.question.question,
-                    "question_intent": self.question.description
+                    "question_intent": extracted_intent
                 }
             ).text        
         else:
@@ -165,18 +187,12 @@ class Probe(LLMAdapter):
                 }
             ).text
         
-        self._history_redis_url = os.environ.get(
-            "REDIS_URL",
-            "redis://localhost:6379/0"
-        )
         self._history = RedisChatMessageHistory(
             session_id=self._session_id(),
-            url=self._history_redis_url
+            url=self._history_redis_url,
+            ttl=int(os.environ.get("REDIS_TTL_SECONDS", 3600))
         )
         self._ensure_system_message()
-
-    def extract_intent(self) -> str:
-        pass
 
     def _session_id(self) -> str:
         return f"{self.id}:{self.session_no}"
