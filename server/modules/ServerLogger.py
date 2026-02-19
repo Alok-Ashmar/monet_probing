@@ -29,7 +29,7 @@ class ServerLogger:
     def warn(self, message: str):
         logger.warning(message)
 
-    def err(self, message: str):
+    def error(self, message: str):
         logger.error(message)
 
     def critical(self, message: str):
