@@ -144,3 +144,25 @@ class get_token(BaseModel):
     code : str
     redirect_uri: str
     grant_type: str
+
+class PdSurvey(BaseModel):
+    id: Optional[int] = None
+    study_id: Optional[int] = None
+    cnt_id: int = 0
+    survey_description: str
+    survey_title: Optional[str] = None
+    # service: str = "monadic"
+    llm: LLMEnum = LLMEnum("chatgpt")
+    language: str = "English"
+    add_context: bool = False
+    config: SurveyConfig = SurveyConfig()
+
+class PdSurveyQuestion(BaseModel):
+    id: Optional[int] = None
+    qs_id: Optional[int] = None
+    su_id: Optional[int] = None  # this will correspond to survey.id
+    cnt_id: int = 0
+    question: str = "<question>"
+    description: str = "<description>"
+    seq_num: int = Field(default_factory=int, description="Sequence position of the question")
+    config: QuestionConfig = QuestionConfig()

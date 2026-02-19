@@ -1,8 +1,8 @@
 from typing import Dict
 from bson import ObjectId
 from models.Survey import SurveyResponse
-from modules.MongoWrapper import monet_db
 from modules.ServerLogger import ServerLogger
+from server.models.MongoWrapper import monet_db
 from modules.ProdProbe_v2 import Probe, NSIGHT_v2
 from models.Survey import PySurvey, PySurveyQuestion
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect

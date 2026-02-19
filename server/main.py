@@ -8,7 +8,7 @@ env_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(env_path)
 
 # - routes
-from routes.websocket import websocket_router, probes
+from server.routes.websocket import websocket_router, probes
 
 description = """
 Monet-Intern-Effort

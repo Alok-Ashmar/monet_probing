@@ -6,7 +6,7 @@ from datetime import datetime
 from langsmith import traceable
 from typing import AsyncIterable
 from utils.intent import extract_intent
-from modules.MongoWrapper import monet_db
+from server.models.MongoWrapper import monet_db
 from modules.LLMAdapter import LLMAdapter
 from modules.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
@@ -192,14 +192,18 @@ class Probe(LLMAdapter):
             url=self._history_redis_url,
             ttl=int(os.environ.get("REDIS_TTL_SECONDS", 3600))
         )
+
         self._ensure_system_message()
+
 
     def _session_id(self) -> str:
         return f"{self.id}:{self.session_no}"
 
+
     def _ensure_system_message(self):
         if not self._history.messages:
             self._history.add_message(SystemMessage(content=self.__system_prompt__))
+
 
     async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict):
         full_content = ""
@@ -209,6 +213,7 @@ class Probe(LLMAdapter):
             yield chunk
         if full_content:
             self._history.add_ai_message(full_content)
+
 
     @traceable(run_type="chain", name="Gen Streamed Follow Up")
     def gen_streamed_follow_up(self, question: str, response: str) -> tuple[AsyncIterable[str], AsyncIterable[NSIGHT]]:
@@ -235,6 +240,7 @@ class Probe(LLMAdapter):
         
         metric_llm_stream: NSIGHT = metric_chain.astream({}, config={**run_config, "tags": ["metrics", "websocket"]})
         return (llm_stream, metric_llm_stream)
+
 
     @traceable(run_type="tool", name="Store Response")
     def store_response(self, nsight_v2: NSIGHT_v2, session_no: int):
