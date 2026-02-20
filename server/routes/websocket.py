@@ -1,20 +1,36 @@
+import os
+import json
+from redis import Redis
 from typing import Dict
 from bson import ObjectId
-from models.Survey import SurveyResponse
+from types import SimpleNamespace
 from modules.ServerLogger import ServerLogger
-from server.models.MongoWrapper import monet_db
 from modules.ProdProbe_v2 import Probe, NSIGHT_v2
-from models.Survey import PySurvey, PySurveyQuestion
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from models.Survey import SurveyResponse, SurveyConfig, QuestionConfig
+from utils.db_switcher import DBSwitcher
 
 websocket_router = APIRouter(prefix="/ws", tags=["websocket", "ai-qa"])
 logger = ServerLogger()
 
 active_connections: Dict[str, WebSocket] = {}
-DbSurvey = monet_db.get_collection("surveys")
-DbSurveyQuestion = monet_db.get_collection("survey-questions")
+redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+redis_client = Redis.from_url(redis_url)
 
 probes = {}
+db_switcher = DBSwitcher(logger=logger)
+
+
+def _is_object_id(value: str) -> bool:
+    try:
+        ObjectId(value)
+        return True
+    except Exception:
+        return False
+
+
+def _is_int_id(value: str) -> bool:
+    return value.isdigit()
 
 @websocket_router.websocket("/ai-qa")
 async def websocket_ai_qa(websocket: WebSocket):
@@ -25,27 +41,64 @@ async def websocket_ai_qa(websocket: WebSocket):
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
             
-            # Validate the survey exists
-            survey = DbSurvey.find_one({"_id": ObjectId(survey_response.su_id)})
-            if not survey:
-                await websocket.send_json({
-                    "error": True,
-                    "message": "Survey not found",
-                    "code": 404
-                })
-                continue
+            redis_key = f"survey_details:{survey_response.su_id}:{survey_response.qs_id}"
+            cached_payload = redis_client.get(redis_key)
+            if not cached_payload:
+                su_id = str(survey_response.su_id)
+                qs_id = str(survey_response.qs_id)
+                if _is_object_id(su_id) and _is_object_id(qs_id):
+                    db_type = "mongo"
+                elif _is_int_id(su_id) and _is_int_id(qs_id):
+                    db_type = "mysql"
+                else:
+                    await websocket.send_json({
+                        "error": True,
+                        "message": "Invalid survey or question id format",
+                        "code": 400
+                    })
+                    continue
 
-            question = DbSurveyQuestion.find_one({"_id": ObjectId(survey_response.qs_id)})
-            if not question:
-                await websocket.send_json({
-                    "error": True,
-                    "message": "Question not found",
-                    "code": 404
-                })
-                continue
+                output, error = await db_switcher.fetch_and_cache_survey_details(
+                    db_type=db_type,
+                    survey_response=survey_response,
+                )
+                if error or not output:
+                    await websocket.send_json(error or {
+                        "error": True,
+                        "message": "Survey details not found",
+                        "code": 404
+                    })
+                    continue
+                payload = output
+            else:
+                payload = json.loads(cached_payload)
+            
+            survey_data = payload.get("survey") or {}
+            question_data = payload.get("question") or {}
 
-            survey = PySurvey(**survey)
-            question = PySurveyQuestion(**question)
+            survey_config = SurveyConfig(
+                language=survey_data.get("language", "English"),
+                add_context=survey_data.get("add_context", True),
+            )
+            survey = SimpleNamespace(
+                id=survey_response.su_id,
+                description=survey_data.get("survey_description", "-"),
+                config=survey_config,
+            )
+
+            question_config = QuestionConfig(
+                probes=question_data.get("min_probe", 0),
+                max_probes=question_data.get("max_probe", 0),
+                quality_threshold=question_data.get("quality_threshold", 4),
+                gibberish_score=question_data.get("gibberish_score", 4),
+                add_context=question_data.get("add_context", True),
+            )
+            question = SimpleNamespace(
+                id=survey_response.qs_id,
+                question=question_data.get("question", ""),
+                description=question_data.get("question_description", ""),
+                config=question_config,
+            )
 
             try:
                 probe = None

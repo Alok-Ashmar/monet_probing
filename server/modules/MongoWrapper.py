@@ -1,6 +1,6 @@
 import os
 from pymongo import MongoClient, AsyncMongoClient
-from ..modules.ServerLogger import ServerLogger
+from .ServerLogger import ServerLogger
 
 logger = ServerLogger()
 

@@ -6,12 +6,12 @@ from datetime import datetime
 from langsmith import traceable
 from typing import AsyncIterable
 from utils.intent import extract_intent
-from server.models.MongoWrapper import monet_db
 from modules.LLMAdapter import LLMAdapter
 from modules.ServerLogger import ServerLogger
+from modules.MongoWrapper import monet_db  # type: ignore
 from langchain_core.messages import SystemMessage
-from models.Survey import PySurvey, PySurveyQuestion, SurveyResponse
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
+from models.Survey import PySurvey, PySurveyQuestion, SurveyResponse
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 
@@ -42,8 +42,8 @@ class Probe(LLMAdapter):
         self.simple_store = simple_store
         self.question = question
         self.mo_id = mo_id
-        self.su_id = ObjectId(self.metadata.id)
-        self.qs_id = ObjectId(question.id)
+        self.su_id = self.metadata.id
+        self.qs_id = question.id
         self.ended = False
         self.session_no = session_no
         self.survey_details = survey_details
@@ -197,6 +197,7 @@ class Probe(LLMAdapter):
 
 
     def _session_id(self) -> str:
+        print(f"Generating session ID for {self.id}:{self.session_no}")
         return f"{self.id}:{self.session_no}"
 
 

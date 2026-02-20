@@ -4,7 +4,7 @@ from langchain_core.prompts import PromptTemplate
 
 def _intent_key(survey_details: dict, logger) -> str:
     try:
-        question_key = f"{survey_details.su_id}_{survey_details.qs_id}"
+        question_key = f"question_intent:{survey_details.su_id}:{survey_details.qs_id}"
     except Exception as e:
         question_key = ""
         logger.error(f"Failed to create intent key from survey details: {e}")
