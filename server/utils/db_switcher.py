@@ -1,9 +1,14 @@
-import os
+from __future__ import annotations
+
 import json
-from typing import Any, Optional, Protocol, Tuple, TypedDict, Dict,  TYPE_CHECKING
+import os
+from datetime import datetime
+from typing import Any, Dict, Optional, Protocol, Tuple, TypedDict, TYPE_CHECKING
+
+import pytz
 
 if TYPE_CHECKING:
-    from models.Survey import PdSurvey, PdSurveyQuestion # type: ignore
+    from models.Survey import PdSurvey, PdSurveyQuestion  # type: ignore
 
 
 class ErrorDict(TypedDict):
@@ -21,14 +26,10 @@ class SurveyResponseLike(Protocol):
     qs_id: str
 
 
-def _is_hex_id(value: str) -> bool:
-    return len(value) == 24 and all(ch in "0123456789abcdefABCDEF" for ch in value)
-
-
-def _is_int_id(value: str) -> bool:
-    return value.isdigit()
-
-FetchResult = Tuple["Optional[PdSurvey]", "Optional[PdSurveyQuestion]", "Optional[ErrorDict]"]
+if TYPE_CHECKING:
+    FetchResult = Tuple[Optional[PdSurvey], Optional[PdSurveyQuestion], Optional[ErrorDict]]
+else:
+    FetchResult = Tuple[Optional[Any], Optional[Any], Optional[ErrorDict]]
 
 
 class MongoSurveyRepository:
@@ -40,8 +41,8 @@ class MongoSurveyRepository:
     ) -> FetchResult:
         """Fetch survey and question from MongoDB and normalize to Pydantic models."""
         from bson import ObjectId
-        from modules.MongoWrapper import monet_db  # type: ignore
-        from models.Survey import (  # type: ignore
+        from modules.MongoWrapper import monet_db
+        from models.Survey import (
             PySurvey,
             PySurveyQuestion,
             QuestionConfig,
@@ -96,6 +97,35 @@ class MongoSurveyRepository:
 
         return normalized_survey, normalized_question, None
 
+    def store_response(
+        self,
+        *,
+        nsight_v2: Any,
+        probe: Any,
+        session_no: int,
+        logger: Any = None,
+    ) -> Any:
+        """Store probe response in MongoDB."""
+        from modules.MongoWrapper import monet_db_test  # type: ignore
+
+        india = pytz.timezone("Asia/Kolkata")
+        now_india = datetime.now(india)
+        QnAs = monet_db_test.get_collection("QnAs")
+        insert_one_res = QnAs.insert_one({
+            **nsight_v2.model_dump(),
+            "ended": probe.ended,
+            "mo_id": probe.mo_id,
+            "su_id": probe.su_id,
+            "qs_id": probe.qs_id,
+            "qs_no": probe.counter + 1,
+            "created_at": now_india.isoformat(),
+            "session_no": session_no,
+        })
+        if logger:
+            logger.info("Inserted one doc successfully")
+            logger.info(insert_one_res)
+        return insert_one_res
+
 
 class MySQLSurveyRepository:
     """MySQL data access for surveys and questions."""
@@ -107,8 +137,8 @@ class MySQLSurveyRepository:
     ) -> FetchResult:
         """Fetch survey and question from MySQL via SQLAlchemy."""
         from sqlalchemy import text
-        from models.sql.db import AsyncSessionLocal  # type: ignore
-        from models.Survey import (  # type: ignore
+        from modules.SQL_Wrapper import AsyncSessionLocal
+        from models.Survey import (
             QuestionConfig,
             SurveyConfig,
             PdSurvey,
@@ -188,6 +218,45 @@ class MySQLSurveyRepository:
         async with AsyncSessionLocal() as session:
             return await _run_queries(session)
 
+    async def store_response(
+        self,
+        *,
+        nsight_v2: Any,
+        survey_response: Any,
+        probe: Any,
+        db: Any = None,
+    ) -> Any:
+        """Store probe response in MySQL."""
+        from models.sql.models import SurveyResponseTest
+        from modules.SQL_Wrapper import AsyncSessionLocal
+
+        new_survey_response = SurveyResponseTest(
+            su_id=survey_response.su_id,
+            mo_id=survey_response.mo_id,
+            qs_id=survey_response.qs_id,
+            cnt_id=survey_response.cnt_id,
+            question=survey_response.question,
+            response=survey_response.response,
+            reason=nsight_v2.reason,
+            keywords=nsight_v2.keywords,
+            quality=nsight_v2.quality,
+            relevance=nsight_v2.relevance,
+            confusion=nsight_v2.confusion,
+            negativity=nsight_v2.negativity,
+            consistency=nsight_v2.consistency,
+            qs_no=probe.counter,
+            session_no=probe.session_no,
+        )
+        if db is not None:
+            db.add(new_survey_response)
+            await db.commit()
+            return new_survey_response
+
+        async with AsyncSessionLocal() as session:
+            session.add(new_survey_response)
+            await session.commit()
+            return new_survey_response
+
 
 class DBSwitcher:
     """Fetch survey and question data from the configured database backend."""
@@ -240,8 +309,8 @@ class DBSwitcher:
 
     def build_output(
         self,
-        survey: "PdSurvey",
-        question: "PdSurveyQuestion",
+        survey: PdSurvey,
+        question: PdSurveyQuestion,
     ) -> Dict[str, Dict[str, Any]]:
         """Build the full output payload for caching or API responses."""
         return {
@@ -304,9 +373,36 @@ class DBSwitcher:
         )
         return output, None
 
+    async def simple_store_response(
+        self,
+        *,
+        db_type: Optional[str],
+        nsight_v2: Any,
+        survey_response: Any,
+        probe: Any,
+        session_no: int,
+        db: Any = None,
+    ) -> Any:
+        """Store probe response in Mongo or MySQL depending on db_type."""
+        db_type_norm = self._normalize_db_type(db_type)
+        if db_type_norm in {"mongo", "mongodb"}:
+            return self._mongo.store_response(
+                nsight_v2=nsight_v2,
+                probe=probe,
+                session_no=session_no,
+                logger=self._logger,
+            )
+        if db_type_norm in {"mysql", "sql"}:
+            return await self._mysql.store_response(
+                nsight_v2=nsight_v2,
+                survey_response=survey_response,
+                probe=probe,
+                db=db,
+            )
+        raise ValueError(f"Unsupported db_type: {db_type}")
+
 
 if __name__ == "__main__":
-    import os
     import sys
     import asyncio
     import argparse

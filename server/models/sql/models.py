@@ -110,3 +110,26 @@ class SurveyResponse(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
     session_no = Column(Integer)
+
+class SurveyResponseTest(Base):
+    __tablename__ = "probe_survey_response_test"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    su_id = Column(Integer)
+    mo_id = Column(Integer)
+    qs_id = Column(Integer)
+    cnt_id = Column(Integer)
+    question = Column(Text)
+    response = Column(Text)
+    reason = Column(Text)
+    keywords = Column(JSON)
+    quality = Column(Integer, default=0)
+    relevance = Column(Integer, default=0)
+    confusion = Column(Integer, default=0)
+    negativity = Column(Integer, default=0)
+    consistency = Column(Integer, default=0)
+    confidence = Column(Integer, default=0)
+    qs_no = Column(Integer)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
+    session_no = Column(Integer)

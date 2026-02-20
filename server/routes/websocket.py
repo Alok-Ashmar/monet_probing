@@ -40,24 +40,25 @@ async def websocket_ai_qa(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
+            print(f"Received survey response: {survey_response}")
+
+            su_id = str(survey_response.su_id)
+            qs_id = str(survey_response.qs_id)
+            if _is_object_id(su_id) and _is_object_id(qs_id):
+                db_type = "mongo"
+            elif _is_int_id(su_id) and _is_int_id(qs_id):
+                db_type = "mysql"
+            else:
+                await websocket.send_json({
+                    "error": True,
+                    "message": "Invalid survey or question id format",
+                    "code": 400
+                })
+                continue
             
             redis_key = f"survey_details:{survey_response.su_id}:{survey_response.qs_id}"
             cached_payload = redis_client.get(redis_key)
             if not cached_payload:
-                su_id = str(survey_response.su_id)
-                qs_id = str(survey_response.qs_id)
-                if _is_object_id(su_id) and _is_object_id(qs_id):
-                    db_type = "mongo"
-                elif _is_int_id(su_id) and _is_int_id(qs_id):
-                    db_type = "mysql"
-                else:
-                    await websocket.send_json({
-                        "error": True,
-                        "message": "Invalid survey or question id format",
-                        "code": 400
-                    })
-                    continue
-
                 output, error = await db_switcher.fetch_and_cache_survey_details(
                     db_type=db_type,
                     survey_response=survey_response,
@@ -106,11 +107,11 @@ async def websocket_ai_qa(websocket: WebSocket):
                 if key in probes:
                     probe = probes[key]
                 else:
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=0, survey_details=survey_response)
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=True,session_no=0, survey_details=survey_response)
                     probes[key] = probe
                 if (survey_response.question or "").strip() == (question.question or "").strip():
                     session_no = probe.session_no + 1
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=session_no, survey_details=survey_response)
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=True,session_no=session_no, survey_details=survey_response)
                     probes[key] = probe   
 
                 # Generate follow-up using the probe
@@ -150,10 +151,17 @@ async def websocket_ai_qa(websocket: WebSocket):
                         await websocket.send_json(final_response)
 
                 await websocket.send_json(ended_response)
+                
                 if probe.simple_store:
                     nsight_v2 = NSIGHT_v2(**{**metric.model_dump(), "question": survey_response.question, "response": survey_response.response})
-                    probe.store_response(nsight_v2, session_no)
-                    
+                    await db_switcher.simple_store_response(
+                        db_type=db_type,
+                        nsight_v2=nsight_v2,
+                        survey_response=survey_response,
+                        probe=probe,
+                        session_no=session_no,
+                    )
+
             except Exception as e:
                 logger.error("Error in websocket AI QA:")
                 logger.error(e)

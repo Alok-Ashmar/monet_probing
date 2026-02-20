@@ -37,3 +37,4 @@ class MongoCore:
 
 
 monet_db = MongoCore(database="diy_monet")
+monet_db_test = MongoCore(database="diy_monet_test")

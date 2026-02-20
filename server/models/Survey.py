@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from .payload import LLMEnum, PyObjectId
 
@@ -95,6 +95,7 @@ class SurveyResponse(BaseModel):
     su_id: str
     mo_id: str
     qs_id: str
+    cnt_id: Optional[str] = None
     question: str
     response: str
     comment: str | None = None
