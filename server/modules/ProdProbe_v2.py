@@ -197,7 +197,6 @@ class Probe(LLMAdapter):
 
 
     def _session_id(self) -> str:
-        print(f"Generating session ID for {self.id}:{self.session_no}")
         return f"{self.id}:{self.session_no}"
 
 
