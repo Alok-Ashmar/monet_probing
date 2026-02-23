@@ -204,6 +204,30 @@ class Probe(LLMAdapter):
         if not self._history.messages:
             self._history.add_message(SystemMessage(content=self.__system_prompt__))
 
+    def to_state(self) -> dict:
+        return {
+            "session_no": self.session_no,
+            "counter": self.counter,
+            "ended": self.ended,
+            "simple_store": self.simple_store,
+        }
+
+    def apply_state(self, state: dict):
+        if not state:
+            return
+        try:
+            self.counter = int(state.get("counter", self.counter))
+        except Exception:
+            pass
+        try:
+            self.ended = bool(state.get("ended", self.ended))
+        except Exception:
+            pass
+        try:
+            self.simple_store = bool(state.get("simple_store", self.simple_store))
+        except Exception:
+            pass
+
     def clear_memory(self):
         try:
             self._history.clear()

@@ -8,7 +8,7 @@ env_path = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(env_path)
 
 # - routes
-from routes.websocket import websocket_router, probes
+from routes.websocket import websocket_router
 
 description = """
 Monet-Intern-Effort
@@ -50,10 +50,9 @@ app.include_router(websocket_router)
 @app.get("/health")
 def health_check():
     """Health check for WebSocket handler"""
-    # Inspect the probes dict from the websocket router for active probe sessions.
-    total_probes = len(probes)
-    websocket_status = "healthy" if total_probes >= 0 else "unhealthy"
+    # Basic health check without relying on websocket internals.
+    websocket_status = "healthy"
     return {
         "websocket_status": websocket_status,
-        "active_probe_sessions": total_probes
+        "active_probe_sessions": 0
     }
