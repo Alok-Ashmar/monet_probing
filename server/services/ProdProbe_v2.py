@@ -6,11 +6,11 @@ from datetime import datetime
 from langsmith import traceable
 from typing import AsyncIterable
 from utils.intent import extract_intent
-from modules.LLMAdapter import LLMAdapter
-from modules.ServerLogger import ServerLogger
-from modules.MongoWrapper import monet_db  # type: ignore
+from services.LLMAdapter import LLMAdapter
+from utils.ServerLogger import ServerLogger
+from database.MongoWrapper import monet_db  # type: ignore
 from langchain_core.messages import SystemMessage
-from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
+from services.ProdNSightGenerator import NSIGHT, NSIGHT_v2
 from models.Survey import PySurvey, PySurveyQuestion, SurveyResponse
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
@@ -27,16 +27,16 @@ class Probe(LLMAdapter):
     invalid = False
 
     def __init__(self,
-        mo_id: str, # user ref
-        metadata: PySurvey, # survey ref
-        question: PySurveyQuestion, # survey question ref
+        mo_id: str, 
+        metadata: PySurvey,
+        question: PySurveyQuestion,
         simple_store=False,
         session_no:int = 0,
         survey_details: SurveyResponse = None,
         ):
         super().__init__(metadata.config.llm, 0.7, streaming=True)
         self.id = f"{metadata.id}-{question.id}-{mo_id}"
-        self.__metric_llm__ = self.llm.with_structured_output(NSIGHT)
+        self.__metric_llm__ = self.llm.with_structured_output(NSIGHT, method="function_calling")
         self.metadata = metadata
         self.counter = 0
         self.simple_store = simple_store
@@ -197,35 +197,90 @@ class Probe(LLMAdapter):
 
 
     def _session_id(self) -> str:
-        return f"{self.id}:{self.session_no}"
+        # Use a consistent session ID across the entire interaction for this user/question
+        return f"{self.id}"
 
 
     def _ensure_system_message(self):
         if not self._history.messages:
             self._history.add_message(SystemMessage(content=self.__system_prompt__))
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Exclude unpicklable objects
+        state.pop('llm', None)
+        state.pop('_LLMAdapter__llama_client', None)
+        state.pop('_Probe__metric_llm__', None)
+        state.pop('_redis', None)
+        state.pop('_history', None)
+        return state
 
-    async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict):
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Re-initialize unpicklable objects
+        # 1. Re-init LLM (from LLMAdapter)
+        super(Probe, self).__init__(self.metadata.config.llm, 0.7, streaming=True)
+        # 2. Re-init metric LLM
+        self.__metric_llm__ = self.llm.with_structured_output(NSIGHT, method="function_calling")
+        # 3. Re-init Redis connection
+        self._redis = Redis.from_url(self._history_redis_url)
+        # 4. Re-init History
+        self._history = RedisChatMessageHistory(
+            session_id=self._session_id(),
+            url=self._history_redis_url,
+            ttl=int(os.environ.get("REDIS_TTL_SECONDS", 3600))
+        )
+
+
+    async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict, update_history: bool = True):
         full_content = ""
         async for chunk in chain.astream(inputs, config=run_config):
             content = chunk.content if hasattr(chunk, "content") else str(chunk)
             full_content += content
             yield chunk
-        if full_content:
+        if full_content and update_history:
             self._history.add_ai_message(full_content)
 
 
-    @traceable(run_type="chain", name="Gen Streamed Follow Up")
-    def gen_streamed_follow_up(self, question: str, response: str) -> tuple[AsyncIterable[str], AsyncIterable[NSIGHT]]:
-        next_counter = self.counter + 1
-        user_text = f"Response {next_counter}. {response}"
+    def add_user_response(self, response: str):
+        self.counter += 1
+        user_text = f"Response {self.counter}. {response}"
         self._history.add_user_message(user_text)
-        self.counter = next_counter
-        prompt = ChatPromptTemplate.from_messages(self._history.messages)
-        chain = prompt | self.llm
-        metric_chain = prompt | self.__metric_llm__
 
-        # Define metadata for tracing (User ID, Survey ID, Question ID)
+    @traceable(run_type="chain", name="Get Metrics")
+    async def gen_metrics(self, response: str) -> NSIGHT:
+        prompt = ChatPromptTemplate.from_messages(self._history.messages)
+        metric_chain = prompt | self.__metric_llm__
+        
+        run_config = {
+            "metadata": {
+                "mo_id": self.mo_id,
+                "su_id": str(self.su_id),
+                "qs_id": str(self.qs_id),
+                "session_no": self.session_no
+            },
+            "tags": ["metrics", "websocket"]
+        }
+        
+        return await metric_chain.ainvoke({}, config=run_config)
+
+
+    @traceable(run_type="chain", name="Gen Streamed Follow Up")
+    def gen_follow_up_stream(self, use_redirection: bool = False) -> AsyncIterable[str]:
+        if use_redirection:
+            # Inject redirection steering as a system-like instruction at the end of history for this turn
+            redirect_msg = f"The user's response was irrelevant to the original question. Please politely acknowledge their response but firmly rephrase the original question to redirect them back to the topic: {self.question.question}"
+            messages = self._history.messages + [SystemMessage(content=redirect_msg)]
+            prompt = ChatPromptTemplate.from_messages(messages)
+            # We don't want to save the "redirection AI response" to permanent history in the same way 
+            # or maybe we do? Usually we do to keep context.
+            update_history = True 
+        else:
+            prompt = ChatPromptTemplate.from_messages(self._history.messages)
+            update_history = True
+
+        chain = prompt | self.llm
+        
         run_config = {
             "metadata": {
                 "mo_id": self.mo_id,
@@ -236,10 +291,15 @@ class Probe(LLMAdapter):
             "tags": ["probe", "websocket"]
         }
 
-        llm_stream: str = self._stream_with_history_update(chain, {}, run_config)
-        
-        metric_llm_stream: NSIGHT = metric_chain.astream({}, config={**run_config, "tags": ["metrics", "websocket"]})
-        return (llm_stream, metric_llm_stream)
+        return self._stream_with_history_update(chain, {}, run_config, update_history=update_history)
+
+
+    @traceable(run_type="chain", name="Legacy Gen Streamed Follow Up")
+    def gen_streamed_follow_up(self, question: str, response: str) -> tuple[AsyncIterable[str], AsyncIterable[NSIGHT]]:
+        # This remains for backward compatibility or if called directly without threshold logic
+        metric_stream = self.gen_metrics(response)
+        llm_stream = self.gen_follow_up_stream(use_redirection=False)
+        return (llm_stream, metric_stream)
 
 
     @traceable(run_type="tool", name="Store Response")

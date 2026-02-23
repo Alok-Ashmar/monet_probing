@@ -76,6 +76,7 @@ class QuestionConfig(BaseModel):
     allow_pasting: bool = False
     quality_threshold: int = 4
     gibberish_score: int = 7
+    relevance_threshold: int = 4
 
 
 class SurveyQuestion(BaseModel):

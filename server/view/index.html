@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Tester</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            font-size: 12px;
+            line-height: 1.3;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+            padding: 6px 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .connection {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .connection input {
+            flex: 1;
+            max-width: 350px;
+            padding: 5px 8px;
+        }
+
+        .status {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+
+        .status.disconnected {
+            background: #fee;
+            color: #c00;
+        }
+
+        .status.connected {
+            background: #efe;
+            color: #070;
+        }
+
+        .status.connecting {
+            background: #ffe;
+            color: #a50;
+        }
+
+        /* Main Layout */
+        .main {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1px;
+            background: #ddd;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Sections */
+        .section {
+            background: #fff;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+            flex-shrink: 0;
+        }
+
+        /* Forms */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .form-group.full {
+            grid-column: span 4;
+        }
+
+        .form-group.half {
+            grid-column: span 2;
+        }
+
+        label {
+            font-size: 10px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        input,
+        textarea {
+            padding: 5px 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: inherit;
+            background: #fff;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #0066cc;
+        }
+
+        textarea {
+            resize: none;
+            min-height: 36px;
+        }
+
+        textarea.json-input {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            flex: 1;
+            min-height: 100px;
+        }
+
+        /* Buttons */
+        button {
+            padding: 4px 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            background: #fff;
+            color: #333;
+            font-size: 11px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #f5f5f5;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.primary {
+            background: #0066cc;
+            border-color: #0066cc;
+            color: #fff;
+        }
+
+        button.primary:hover {
+            background: #0055aa;
+        }
+
+        button.success {
+            background: #28a745;
+            border-color: #28a745;
+            color: #fff;
+        }
+
+        button.danger {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: #fff;
+        }
+
+        button.small {
+            padding: 3px 8px;
+            font-size: 10px;
+        }
+
+        button.active {
+            background: #0066cc;
+            border-color: #0066cc;
+            color: #fff;
+        }
+
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            gap: 0;
+        }
+
+        .mode-toggle button {
+            border-radius: 0;
+            margin-right: -1px;
+            padding: 3px 8px;
+        }
+
+        .mode-toggle button:first-child {
+            border-radius: 3px 0 0 3px;
+        }
+
+        .mode-toggle button:last-child {
+            border-radius: 0 3px 3px 0;
+        }
+
+        /* Presets Bar */
+        .presets-bar {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            padding: 6px 8px;
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            margin-bottom: 8px;
+            flex-shrink: 0;
+        }
+
+        .presets-bar span {
+            font-size: 10px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .presets-bar button.mongo {
+            background: #4db33d;
+            border-color: #4db33d;
+            color: #fff;
+        }
+
+        .presets-bar button.mysql {
+            background: #00758f;
+            border-color: #00758f;
+            color: #fff;
+        }
+
+        /* Actions Bar */
+        .actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #eee;
+            flex-shrink: 0;
+        }
+
+        /* Bottom Panel */
+        .bottom {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1px;
+            background: #ddd;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Stream Box */
+        .stream-box {
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            padding: 8px;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        .stream-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 10px;
+            color: #666;
+        }
+
+        .stream-text {
+            font-size: 12px;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        .stream-text.streaming::after {
+            content: '▋';
+            animation: blink 0.8s infinite;
+            color: #0066cc;
+        }
+
+        .stream-text.empty {
+            color: #999;
+            font-style: italic;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: 600;
+        }
+
+        .badge.ended {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge.gibberish {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .badge.streaming {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .badge.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+        }
+
+        .metric {
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            padding: 6px 4px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .metric-value.good {
+            color: #28a745;
+        }
+
+        .metric-value.warning {
+            color: #ffc107;
+        }
+
+        .metric-value.bad {
+            color: #dc3545;
+        }
+
+        .metric-label {
+            font-size: 9px;
+            color: #666;
+            margin-top: 1px;
+        }
+
+        /* Keywords */
+        .keywords {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 6px;
+        }
+
+        .keyword {
+            background: #e7f3ff;
+            color: #0066cc;
+            padding: 1px 6px;
+            border-radius: 2px;
+            font-size: 10px;
+        }
+
+        /* Logs */
+        .logs {
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            padding: 6px;
+            flex: 1;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 10px;
+            min-height: 0;
+        }
+
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            gap: 6px;
+        }
+
+        .log-time {
+            color: #999;
+            flex-shrink: 0;
+        }
+
+        .log-type {
+            padding: 0px 3px;
+            border-radius: 2px;
+            font-size: 8px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .log-type.send {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .log-type.receive {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .log-type.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .log-type.info {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .log-msg {
+            color: #333;
+            word-break: break-all;
+        }
+
+        /* JSON Preview */
+        .json-preview {
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            padding: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-y: auto;
+            color: #555;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 6px;
+            flex-shrink: 0;
+        }
+
+        .tab {
+            padding: 4px 10px;
+            border: none;
+            background: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+
+        .tab:hover {
+            color: #333;
+        }
+
+        .tab.active {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
+
+        .tab-content {
+            display: none;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* History */
+        .history-item {
+            padding: 5px;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            margin-bottom: 4px;
+            background: #fafafa;
+            font-size: 11px;
+        }
+
+        .history-user {
+            color: #333;
+        }
+
+        .history-ai {
+            color: #28a745;
+        }
+
+        .history-meta {
+            font-size: 9px;
+            color: #999;
+            margin-top: 2px;
+        }
+
+        /* Error message */
+        .error-msg {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-bottom: 6px;
+            display: none;
+            flex-shrink: 0;
+        }
+
+        .error-msg.show {
+            display: block;
+        }
+
+        /* Helpers */
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .text-muted {
+            color: #999;
+        }
+
+        .mb-6 {
+            margin-bottom: 6px;
+        }
+
+        .mt-6 {
+            margin-top: 6px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .flex-1 {
+            flex: 1;
+            min-height: 0;
+        }
+
+        .scroll-y {
+            overflow-y: auto;
+        }
+
+        /* Form content wrapper */
+        .form-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        /* Quick info table */
+        .quick-info {
+            font-size: 10px;
+            margin-top: 6px;
+            flex-shrink: 0;
+        }
+
+        .quick-info td {
+            padding: 2px 0;
+        }
+
+        .quick-info td:first-child {
+            color: #666;
+            padding-right: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>🔌 WS Tester</h1>
+        <div class="connection">
+            <input type="text" id="wsUrl" value="ws://localhost:8000/ws/ai-qa" placeholder="WebSocket URL">
+            <button id="connectBtn" class="success" onclick="toggleConnection()">Connect</button>
+            <span id="status" class="status disconnected">Disconnected</span>
+        </div>
+    </div>
+
+    <!-- Middle -->
+    <div class="main">
+        <!-- Left -->
+        <div class="section">
+            <div class="section-title flex-between">
+                <span>Request</span>
+                <div class="mode-toggle">
+                    <button id="modeForm" class="small active" onclick="setMode('form')">Form</button>
+                    <button id="modeJson" class="small" onclick="setMode('json')">JSON</button>
+                </div>
+            </div>
+
+            <div class="presets-bar">
+                <span>Preset:</span>
+                <button class="mongo small" onclick="loadPreset('mongo')">🍃 Mongo</button>
+                <button class="mysql small" onclick="loadPreset('mysql')">🐬 MySQL</button>
+                <button class="small" onclick="clearForm()">Clear</button>
+            </div>
+
+            <div id="errorMsg" class="error-msg"></div>
+
+            <div class="form-content">
+                <!-- Form Mode -->
+                <div id="formMode">
+                    <div class="form-grid mb-6">
+                        <div class="form-group">
+                            <label>SU ID *</label>
+                            <input type="text" id="su_id" placeholder="Survey ID">
+                        </div>
+                        <div class="form-group">
+                            <label>QS ID *</label>
+                            <input type="text" id="qs_id" placeholder="Question ID">
+                        </div>
+                        <div class="form-group">
+                            <label>MO ID *</label>
+                            <input type="text" id="mo_id" placeholder="User ID">
+                        </div>
+                        <div class="form-group">
+                            <label>CNT ID</label>
+                            <input type="text" id="cnt_id" placeholder="Optional">
+                        </div>
+                    </div>
+
+                    <div class="form-group mb-6">
+                        <label>Question *</label>
+                        <textarea id="question" placeholder="Enter the survey question" rows="2"></textarea>
+                    </div>
+
+                    <div class="form-group mb-6">
+                        <label>Response *</label>
+                        <textarea id="response" placeholder="Enter user's response" rows="2"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Comment</label>
+                        <input type="text" id="comment" placeholder="Optional">
+                    </div>
+                </div>
+
+                <!-- JSON Mode -->
+                <div id="jsonMode" class="hidden" style="flex:1; display:flex; flex-direction:column;">
+                    <div class="form-group" style="flex:1; display:flex; flex-direction:column;">
+                        <label>JSON Request</label>
+                        <textarea id="jsonInput" class="json-input"
+                            placeholder='{"su_id": "...", "question": "..."}'></textarea>
+                    </div>
+                    <div class="mt-6">
+                        <button class="small" onclick="formatJson()">Format</button>
+                        <button class="small" onclick="validateJson()">Validate</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="sendBtn" class="primary" onclick="sendMessage()" disabled>Send</button>
+                <button onclick="sendAgain()">Resend</button>
+            </div>
+        </div>
+
+        <!-- Right -->
+        <div class="section">
+            <div class="section-title">Preview</div>
+            <div class="json-preview" id="requestPreview">{ "su_id": "", "question": "" }</div>
+            <table class="quick-info">
+                <tr>
+                    <td>MongoDB:</td>
+                    <td>24 char hex</td>
+                </tr>
+                <tr>
+                    <td>MySQL:</td>
+                    <td>Numeric IDs</td>
+                </tr>
+                <tr>
+                    <td>Required:</td>
+                    <td>su_id, qs_id, mo_id, question, response</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="bottom">
+        <!-- Stream -->
+        <div class="section">
+            <div class="section-title flex-between">
+                <span>Stream</span>
+                <span id="badges"></span>
+            </div>
+
+            <div class="stream-box">
+                <div class="stream-header">
+                    <span>Status: <strong id="streamStatus">Waiting</strong></span>
+                </div>
+                <div id="streamText" class="stream-text empty">Output here...</div>
+            </div>
+
+            <div class="mt-6">
+                <label>Keywords</label>
+                <div id="keywords" class="keywords"><span class="text-muted">None</span></div>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="section">
+            <div class="section-title">Metrics</div>
+
+            <div id="metricsGrid" class="metrics-grid">
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Quality</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Relevance</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Detail</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Gibberish</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Confusion</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Negativity</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Consistency</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">-</div>
+                    <div class="metric-label">Confidence</div>
+                </div>
+            </div>
+
+            <div class="mt-6 flex-1" style="display:flex; flex-direction:column; min-height:0;">
+                <label>Reason</label>
+                <div id="reason" class="json-preview text-muted" style="margin-top:4px;">No reason</div>
+            </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="section">
+            <div class="section-title flex-between">
+                <span>Logs</span>
+                <button class="small" onclick="clearLogs()">Clear</button>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('logs')">Logs</button>
+                <button class="tab" onclick="switchTab('raw')">Raw</button>
+                <button class="tab" onclick="switchTab('history')">History</button>
+            </div>
+
+            <div id="tab-logs" class="tab-content active">
+                <div id="logs" class="logs"></div>
+            </div>
+
+            <div id="tab-raw" class="tab-content">
+                <div id="rawJson" class="json-preview">Waiting...</div>
+            </div>
+
+            <div id="tab-history" class="tab-content">
+                <div id="history" class="scroll-y flex-1">
+                    <p class="text-muted">No history</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let connected = false;
+        let history = [];
+        let lastRequest = null;
+        let inputMode = 'form';
+
+        const presets = {
+            mongo: {
+                su_id: "686fe18250cec29c566ffd02",
+                mo_id: "1752163387905-ccv9tht1",
+                qs_id: "686fe23c50cec29c566ffd03",
+                cnt_id: "",
+                question: "Based on the video you watched for Gabbys, what do you think this movie is about?",
+                response: "I really liked Interstellar because of the visuals.",
+                comment: "",
+                relevant: true
+            },
+            mysql: {
+                su_id: "15461",
+                mo_id: "1750137",
+                qs_id: "101310",
+                cnt_id: "17888",
+                question: "What do you like most about this video for Marty Supreme?",
+                response: "daal was tasty with dahi",
+                comment: "",
+                relevant: true
+            }
+        };
+
+        function setMode(mode) {
+            inputMode = mode;
+            document.getElementById('modeForm').classList.toggle('active', mode === 'form');
+            document.getElementById('modeJson').classList.toggle('active', mode === 'json');
+            document.getElementById('formMode').classList.toggle('hidden', mode !== 'form');
+            document.getElementById('jsonMode').classList.toggle('hidden', mode !== 'json');
+
+            if (mode === 'json') {
+                document.getElementById('jsonInput').value = JSON.stringify(getFormData(), null, 2);
+            } else {
+                try {
+                    fillForm(JSON.parse(document.getElementById('jsonInput').value));
+                } catch (e) { }
+            }
+            updatePreview();
+        }
+
+        function loadPreset(type) {
+            const p = presets[type];
+            if (inputMode === 'form') fillForm(p);
+            else document.getElementById('jsonInput').value = JSON.stringify(p, null, 2);
+            updatePreview();
+            hideError();
+            log('info', `Loaded ${type} preset`);
+        }
+
+        function fillForm(data) {
+            document.getElementById('su_id').value = data.su_id || '';
+            document.getElementById('qs_id').value = data.qs_id || '';
+            document.getElementById('mo_id').value = data.mo_id || '';
+            document.getElementById('cnt_id').value = data.cnt_id || '';
+            document.getElementById('question').value = data.question || '';
+            document.getElementById('response').value = data.response || '';
+            document.getElementById('comment').value = data.comment || '';
+        }
+
+        function clearForm() {
+            if (inputMode === 'form') {
+                ['su_id', 'qs_id', 'mo_id', 'cnt_id', 'question', 'response', 'comment'].forEach(id => {
+                    document.getElementById(id).value = '';
+                });
+            } else {
+                document.getElementById('jsonInput').value = '';
+            }
+            updatePreview();
+            hideError();
+        }
+
+        function getFormData() {
+            const data = {
+                su_id: document.getElementById('su_id').value.trim(),
+                qs_id: document.getElementById('qs_id').value.trim(),
+                mo_id: document.getElementById('mo_id').value.trim(),
+                question: document.getElementById('question').value.trim(),
+                response: document.getElementById('response').value.trim(),
+                relevant: true
+            };
+            const cnt_id = document.getElementById('cnt_id').value.trim();
+            if (cnt_id) data.cnt_id = cnt_id;
+            const comment = document.getElementById('comment').value.trim();
+            if (comment) data.comment = comment;
+            return data;
+        }
+
+        function getRequestData() {
+            if (inputMode === 'form') return getFormData();
+            return JSON.parse(document.getElementById('jsonInput').value);
+        }
+
+        function updatePreview() {
+            try {
+                document.getElementById('requestPreview').textContent = JSON.stringify(getRequestData(), null, 2);
+                hideError();
+            } catch (e) {
+                document.getElementById('requestPreview').textContent = 'Invalid JSON';
+            }
+        }
+
+        function formatJson() {
+            try {
+                const data = JSON.parse(document.getElementById('jsonInput').value);
+                document.getElementById('jsonInput').value = JSON.stringify(data, null, 2);
+                hideError();
+            } catch (e) {
+                showError('Invalid JSON');
+            }
+        }
+
+        function validateJson() {
+            try {
+                const data = JSON.parse(document.getElementById('jsonInput').value);
+                const missing = ['su_id', 'qs_id', 'mo_id', 'question', 'response'].filter(f => !data[f]);
+                if (missing.length) showError('Missing: ' + missing.join(', '));
+                else { hideError(); alert('Valid ✓'); }
+            } catch (e) {
+                showError('Invalid JSON');
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.classList.add('show');
+        }
+
+        function hideError() {
+            document.getElementById('errorMsg').classList.remove('show');
+        }
+
+        function toggleConnection() {
+            connected ? disconnect() : connect();
+        }
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value.trim();
+            if (!url) return log('error', 'Enter URL');
+
+            setStatus('connecting');
+            try {
+                ws = new WebSocket(url);
+                ws.onopen = () => {
+                    connected = true;
+                    setStatus('connected');
+                    document.getElementById('connectBtn').textContent = 'Disconnect';
+                    document.getElementById('connectBtn').className = 'danger';
+                    document.getElementById('sendBtn').disabled = false;
+                    log('info', 'Connected ✓');
+                };
+                ws.onclose = () => {
+                    connected = false;
+                    setStatus('disconnected');
+                    document.getElementById('connectBtn').textContent = 'Connect';
+                    document.getElementById('connectBtn').className = 'success';
+                    document.getElementById('sendBtn').disabled = true;
+                    log('info', 'Disconnected');
+                };
+                ws.onerror = () => log('error', 'Connection error');
+                ws.onmessage = (e) => handleMessage(e.data);
+            } catch (e) {
+                log('error', e.message);
+            }
+        }
+
+        function disconnect() {
+            if (ws) ws.close();
+        }
+
+        function setStatus(s) {
+            const el = document.getElementById('status');
+            el.className = 'status ' + s;
+            el.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        function sendMessage() {
+            if (!connected) return log('error', 'Not connected');
+            try {
+                const data = getRequestData();
+                const missing = ['su_id', 'qs_id', 'mo_id', 'question', 'response'].filter(f => !data[f]);
+                if (missing.length) return showError('Missing: ' + missing.join(', '));
+
+                hideError();
+                lastRequest = data;
+                resetOutput();
+                ws.send(JSON.stringify(data));
+                log('send', JSON.stringify(data));
+                history.push({ type: 'user', question: data.question, response: data.response });
+            } catch (e) {
+                showError(e.message);
+            }
+        }
+
+        function sendAgain() {
+            if (!lastRequest) return log('error', 'No previous request');
+            resetOutput();
+            ws.send(JSON.stringify(lastRequest));
+            log('send', 'Resent');
+        }
+
+        function resetOutput() {
+            document.getElementById('streamText').textContent = '';
+            document.getElementById('streamText').className = 'stream-text streaming';
+            document.getElementById('streamStatus').textContent = 'Sending...';
+            document.getElementById('badges').innerHTML = '';
+        }
+
+        function handleMessage(data) {
+            const msg = JSON.parse(data);
+            log('receive', JSON.stringify(msg).substring(0, 60));
+            document.getElementById('rawJson').textContent = JSON.stringify(msg, null, 2);
+
+            if (msg.error) {
+                document.getElementById('streamStatus').textContent = 'Error';
+                document.getElementById('badges').innerHTML = '<span class="badge error">ERROR</span>';
+                document.getElementById('streamText').textContent = msg.message;
+                document.getElementById('streamText').className = 'stream-text';
+                return;
+            }
+
+            const r = msg.response || {};
+            const statusMap = {
+                'streaming-started': 'Processing...',
+                'streaming': 'Streaming...',
+                'streaming-ended': 'Complete ✓'
+            };
+            document.getElementById('streamStatus').textContent = statusMap[msg.message] || msg.message;
+
+            let badges = '';
+            if (r.ended) badges += '<span class="badge ended">ENDED</span> ';
+            if (r.is_gibberish) badges += '<span class="badge gibberish">GIBBERISH</span> ';
+            if (msg.message === 'streaming') badges += '<span class="badge streaming">STREAMING</span>';
+            document.getElementById('badges').innerHTML = badges;
+
+            if (r.question !== undefined) {
+                if (msg.message === 'streaming-started') {
+                    document.getElementById('streamText').textContent = r.question;
+                } else {
+                    document.getElementById('streamText').textContent += r.question;
+                }
+                document.getElementById('streamText').className = 'stream-text';
+            }
+
+            if (msg.message === 'streaming' || msg.message === 'streaming-started') {
+                document.getElementById('streamText').classList.add('streaming');
+            }
+
+            if (r.metrics) renderMetrics(r.metrics);
+
+            if (msg.message === 'streaming-ended') {
+                document.getElementById('streamText').classList.remove('streaming');
+                history.push({ type: 'ai', question: r.question, metrics: r.metrics });
+                renderHistory();
+            }
+        }
+
+        function renderMetrics(m) {
+            const fields = [
+                { key: 'quality', label: 'Quality', inv: false },
+                { key: 'relevance', label: 'Relevance', inv: false },
+                { key: 'detail', label: 'Detail', inv: false },
+                { key: 'gibberish_score', label: 'Gibberish', inv: true },
+                { key: 'confusion', label: 'Confusion', inv: true },
+                { key: 'negativity', label: 'Negativity', inv: true },
+                { key: 'consistency', label: 'Consistency', inv: false },
+                { key: 'confidence', label: 'Confidence', inv: false }
+            ];
+
+            function getClass(val, inv) {
+                if (inv) return val <= 3 ? 'good' : val >= 7 ? 'bad' : 'warning';
+                return val >= 7 ? 'good' : val <= 3 ? 'bad' : 'warning';
+            }
+
+            document.getElementById('metricsGrid').innerHTML = fields.map(f => {
+                const val = m[f.key];
+                const cls = val !== undefined ? getClass(val, f.inv) : '';
+                return `<div class="metric"><div class="metric-value ${cls}">${val ?? '-'}</div><div class="metric-label">${f.label}</div></div>`;
+            }).join('');
+
+            document.getElementById('keywords').innerHTML = m.keywords?.length
+                ? m.keywords.map(k => `<span class="keyword">${k}</span>`).join('')
+                : '<span class="text-muted">None</span>';
+
+            if (m.reason) {
+                document.getElementById('reason').textContent = m.reason;
+                document.getElementById('reason').classList.remove('text-muted');
+            }
+        }
+
+        function renderHistory() {
+            const el = document.getElementById('history');
+            if (!history.length) { el.innerHTML = '<p class="text-muted">No history</p>'; return; }
+            el.innerHTML = history.map(h => h.type === 'user'
+                ? `<div class="history-item"><div class="history-user">👤 ${h.response}</div></div>`
+                : `<div class="history-item"><div class="history-ai">🤖 ${h.question || 'No follow-up'}</div></div>`
+            ).join('');
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tab).classList.add('active');
+        }
+
+        function log(type, msg) {
+            const logs = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            const display = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+            logs.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span class="log-type ${type}">${type.toUpperCase()}</span><span class="log-msg">${display}</span></div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+            history = [];
+            renderHistory();
+        }
+
+        ['su_id', 'qs_id', 'mo_id', 'cnt_id', 'question', 'response', 'comment'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updatePreview);
+        });
+        document.getElementById('jsonInput').addEventListener('input', updatePreview);
+
+        updatePreview();
+        log('info', 'Ready');
+    </script>
+</body>
+
+</html>

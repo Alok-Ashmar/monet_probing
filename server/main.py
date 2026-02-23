@@ -1,59 +1,82 @@
-import os
-from fastapi import FastAPI
 from dotenv import load_dotenv
-from fastapi.middleware.cors import CORSMiddleware
+# Load environment variables FIRST
+load_dotenv()
 
-# -- Load environment variables
-env_path = os.path.join(os.path.dirname(__file__), ".env")
-load_dotenv(env_path)
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from datetime import datetime
+import os
+from redis.asyncio import Redis
+from fastapi.responses import FileResponse
 
-# - routes
-from routes.websocket import websocket_router, probes
+from routes.websocket import websocket_router
+from utils.ProbeCache import ProbeCache
+from utils.ServerLogger import ServerLogger
+from utils.ProbeCache import ProbeCache
 
-description = """
-Monet-Intern-Effort
-Server function
+logger = ServerLogger()
 
-This is *intern AI server that exposing various intelligent services**.
-"""
+# Configuration
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+PROBE_TTL = int(os.environ.get("PROBE_TTL", "3600"))
 
-# FastAPI app initialization
-app = FastAPI(
-    root_path="/v7/" if os.environ.get("ENV") == "production" else "",
-    title="Monet Networks AI Server",
-    description=description,
-    summary="Monet Networks AI server that exposes interface to various AI based models.",
-    version="2.0.0",
-    terms_of_service="https://www.monetanalytics.com/#/terms-and-conditions",
-    contact={
-        "name": "Monet Networks Inc.",
-        "url": "https://www.monetanalytics.com/#/contact-us",
-        "email": "mayank.malkoti@ashmar.in",
-    },
-)
+# Global state
+redis_client = None
+probe_cache = None
 
-# CORS Middleware
-origins = ["*"]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global redis_client, probe_cache
+    
+    # Startup
+    logger.info("booting application...", logger.boot)
+    
+    redis_client = Redis.from_url(REDIS_URL, decode_responses=False)
+    await redis_client.ping()
+    logger.info("Redis connected",logger.success)
+    
+    probe_cache = ProbeCache(redis_client, ttl=PROBE_TTL)
+    logger.info(f"ProbeCache initialized (TTL: {PROBE_TTL}s)",logger.success)
+    
+    # Make available to other modules
+    app.state.redis = redis_client
+    app.state.probe_cache = probe_cache
+    app.state.start_time = datetime.now()
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down...",logger.danger)
+    if redis_client:
+        await redis_client.close()
+    logger.info("Shutdown complete",logger.success)
 
-# Include routers
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(websocket_router)
+
+
+@app.get("/")
+def root():
+    return {"status": "running"}
+
+@app.get("/index")
+def version():
+    return FileResponse("view/index.html")
 
 # Health check endpoint
 @app.get("/health")
-def health_check():
+async def health_check():
     """Health check for WebSocket handler"""
     # Inspect the probes dict from the websocket router for active probe sessions.
-    total_probes = len(probes)
-    websocket_status = "healthy" if total_probes >= 0 else "unhealthy"
-    return {
-        "websocket_status": websocket_status,
-        "active_probe_sessions": total_probes
-    }
+    try:
+        total_probes = await probe_cache.total_probe()
+        return {
+            "websocket_status": f"healthy with {total_probes} active probe sessions",
+            "active_probe_sessions": total_probes
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {"websocket_status": "unhealthy", "active_probe_sessions": 0}
+    

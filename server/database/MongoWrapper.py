@@ -1,6 +1,7 @@
 import os
-from pymongo import MongoClient, AsyncMongoClient
-from .ServerLogger import ServerLogger
+from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
+from utils.ServerLogger import ServerLogger
 
 logger = ServerLogger()
 
@@ -18,12 +19,15 @@ class MongoCore:
         logger.info(f"{logger.doc} connected to {self.instance_details['database']}")
         if kwargs.get("async-client"):
             logger.warn(f"{logger.WIP} Initializing async client")
-            self.__db_connection = AsyncMongoClient(
-                self.mongo_uri, tls=True, tlsAllowInvalidCertificates=True
+            # Logic: Enable TLS only if not on localhost, or if explicitly requested
+            use_tls = "localhost" not in self.mongo_uri and "127.0.0.1" not in self.mongo_uri
+            self.__db_connection = AsyncIOMotorClient(
+                self.mongo_uri, tls=use_tls, tlsAllowInvalidCertificates=True
             )
         else:
+            use_tls = "localhost" not in self.mongo_uri and "127.0.0.1" not in self.mongo_uri
             self.__db_connection = MongoClient(
-                self.mongo_uri, tls=True, tlsAllowInvalidCertificates=True
+                self.mongo_uri, tls=use_tls, tlsAllowInvalidCertificates=True
             )
         assert kwargs["database"]
         database = kwargs["database"]
