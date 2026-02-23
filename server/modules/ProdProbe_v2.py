@@ -7,8 +7,8 @@ from langsmith import traceable
 from typing import AsyncIterable
 from utils.intent import extract_intent
 from modules.LLMAdapter import LLMAdapter
+from modules.MongoWrapper import monet_db
 from modules.ServerLogger import ServerLogger
-from modules.MongoWrapper import monet_db  # type: ignore
 from langchain_core.messages import SystemMessage
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
 from models.Survey import PySurvey, PySurveyQuestion, SurveyResponse
@@ -203,6 +203,13 @@ class Probe(LLMAdapter):
     def _ensure_system_message(self):
         if not self._history.messages:
             self._history.add_message(SystemMessage(content=self.__system_prompt__))
+
+    def clear_memory(self):
+        try:
+            self._history.clear()
+        except Exception as e:
+            logger.error("Failed to clear Redis chat history")
+            logger.error(e)
 
 
     async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict):

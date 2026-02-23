@@ -40,7 +40,6 @@ async def websocket_ai_qa(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
-            print(f"Received survey response: {survey_response}")
 
             su_id = str(survey_response.su_id)
             qs_id = str(survey_response.qs_id)
@@ -107,11 +106,13 @@ async def websocket_ai_qa(websocket: WebSocket):
                 if key in probes:
                     probe = probes[key]
                 else:
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=True,session_no=0, survey_details=survey_response)
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=0, survey_details=survey_response)
                     probes[key] = probe
+                session_no = probe.session_no
                 if (survey_response.question or "").strip() == (question.question or "").strip():
+                    probe.clear_memory()                    
                     session_no = probe.session_no + 1
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=True,session_no=session_no, survey_details=survey_response)
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=session_no, survey_details=survey_response)
                     probes[key] = probe   
 
                 # Generate follow-up using the probe
