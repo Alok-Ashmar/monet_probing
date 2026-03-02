@@ -93,7 +93,7 @@ class PySurveyQuestion(SurveyQuestion):
 
 class SurveyResponse(BaseModel):
     su_id: str
-    mo_id: str
+    mo_id: str | None
     qs_id: str
     question: str
     response: str

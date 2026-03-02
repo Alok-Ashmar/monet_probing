@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Probe Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #fafbfc;
+            --bg-secondary: #f5f7fa;
+            --bg-tertiary: #eef2f6;
+            --text-primary: #1a202c;
+            --text-secondary: #4a5568;
+            --text-tertiary: #718096;
+            --border-color: #e2e8f0;
+            --accent: #3182ce;
+            --accent-hover: #2b6cb0;
+            --success: #38a169;
+            --error: #e53e3e;
+            --warning: #d69e2e;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #0d1117;
+                --bg-secondary: #161b22;
+                --bg-tertiary: #21262d;
+                --text-primary: #c9d1d9;
+                --text-secondary: #8b949e;
+                --text-tertiary: #484f58;
+                --border-color: #30363d;
+                --accent: #58a6ff;
+                --accent-hover: #1f6feb;
+                --success: #3fb950;
+                --error: #f85149;
+                --warning: #d29922;
+            }
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow: hidden;
+        }
+
+        .surface {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .surface-elevated {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .text-caption {
+            color: var(--text-tertiary);
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .text-body {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .input-field {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.15s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+
+        .btn {
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .metric-bar {
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .metric-fill {
+            height: 100%;
+            transition: width 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+
+        .badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .scroll-zone::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scroll-zone::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scroll-zone::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .scroll-zone::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .pulse-dot {
+            animation: pulseDot 1.8s infinite;
+        }
+
+        @keyframes pulseDot {
+
+            0%,
+            100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .message-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Layout for 3 columns */
+        .app-container {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .main-layout {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            overflow: hidden;
+            gap: 8px;
+            padding: 8px;
+        }
+
+        .panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .panel-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .panel-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .panel-content::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        .panel-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 16px;
+            gap: 12px;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .input-area {
+            flex-shrink: 0;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .header-bar {
+            flex-shrink: 0;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .metric-section {
+            flex-shrink: 0;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .metric-section::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .metric-section::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+
+        .scroll-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .scroll-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scroll-container::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .scroll-container::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        .scroll-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="main-layout">
+            <!-- Left Panel: Connection & Inputs -->
+            <div class="panel" style="flex: 0 0 280px;">
+                <!-- Header -->
+                <div class="header-bar">
+                    <div class="flex items-center gap-2">
+                        <div id="status-dot" class="w-2 h-2 rounded-full bg-gray-400 pulse-dot"></div>
+                        <span class="text-caption">Configuration</span>
+                    </div>
+                    <div id="status-label" class="text-xs font-medium text-gray-500">Disconnected</div>
+                </div>
+
+                <!-- Scrollable Content -->
+                <div class="scroll-container">
+                    <!-- Connection -->
+                    <div class="p-4 border-b border-gray-200">
+                        <div class="space-y-3">
+                            <input id="ws-url" type="text" value="ws://localhost:8001/ws/ai-qa"
+                                class="w-full input-field rounded-lg px-3 py-2 font-mono text-xs">
+                            <button id="connect-toggle"
+                                class="w-full btn btn-primary rounded-lg px-3 py-2.5 justify-center">
+                                <i data-lucide="zap" class="w-4 h-4"></i>
+                                <span>Connect</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Session Setup -->
+                    <div class="p-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-caption">Session Setup</span>
+                            <button id="preset-loader" class="btn btn-secondary rounded-md px-2 py-1 text-caption">
+                                <i data-lucide="sparkles" class="w-3 h-3"></i>
+                                Load Preset
+                            </button>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-1 gap-3">
+                                <div>
+                                    <label class="block text-caption mb-1">Survey ID</label>
+                                    <input id="su-id" type="text" value="686fe18250cec29c566ffd02"
+                                        class="w-full input-field rounded-lg px-3 py-2 font-mono text-xs">
+                                </div>
+                                <div>
+                                    <label class="block text-caption mb-1">Moderator ID</label>
+                                    <input id="mo-id" type="text" value="1752163387905-ccv9tht1"
+                                        class="w-full input-field rounded-lg px-3 py-2 font-mono text-xs">
+                                </div>
+                                <div>
+                                    <label class="block text-caption mb-1">Question ID</label>
+                                    <input id="qs-id" type="text" value="686fe23c50cec29c566ffd03"
+                                        class="w-full input-field rounded-lg px-3 py-2 font-mono text-xs">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-caption mb-1">Initial Question</label>
+                                <textarea id="init-question" rows="2" maxlength="500"
+                                    class="w-full input-field rounded-lg px-3 py-2 resize-none text-sm"
+                                    placeholder="The question text to be evaluated...">Based on the video you watched for Gabbys, what do you think this movie is about? Please be as specific as possible to describe the overall story.</textarea>
+                            </div>
+                            <div>
+                                <label class="block text-caption mb-1">Response (Initial)</label>
+                                <textarea id="init-response" rows="2" maxlength="400"
+                                    class="w-full input-field rounded-lg px-3 py-2 resize-none text-sm"
+                                    placeholder="The initial response from the user...">I really liked Interstellar because of the visuals.</textarea>
+                            </div>
+                            <button id="start-session" disabled
+                                class="w-full btn btn-primary rounded-lg px-3 py-2.5 justify-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                <i data-lucide="play" class="w-4 h-4"></i>
+                                Start Session
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="p-4">
+                        <span class="text-caption block mb-3">Quick Actions</span>
+                        <div class="flex gap-2">
+                            <button id="clear-all" class="btn btn-secondary rounded-lg px-3 py-2 flex-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                Clear All
+                            </button>
+                            <button id="reset-metrics" class="btn btn-secondary rounded-lg px-3 py-2 flex-1">
+                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Panel: Chat Screen -->
+            <div class="panel" style="flex: 1;">
+                <!-- Header -->
+                <div class="header-bar">
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 surface rounded flex items-center justify-center">
+                            <i data-lucide="message-square" class="w-4 h-4 text-gray-500"></i>
+                        </div>
+                        <div>
+                            <span class="text-caption">Interaction</span>
+                            <div id="session-state" class="text-xs text-gray-500">No active session</div>
+                        </div>
+                    </div>
+                    <button id="clear-chat" class="btn btn-secondary rounded-lg px-3 py-2">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        Clear
+                    </button>
+                </div>
+
+                <!-- Messages -->
+                <div id="message-list" class="chat-messages">
+                    <div class="flex flex-col items-center justify-center h-full text-gray-400 text-center">
+                        <i data-lucide="terminal" class="w-8 h-8 mb-3 opacity-60"></i>
+                        <p class="text-sm max-w-xs">Connect and start a session to begin testing.</p>
+                    </div>
+                </div>
+
+                <!-- Input -->
+                <div class="input-area">
+                    <form id="response-form" class="flex gap-2">
+                        <textarea id="response-input" disabled rows="1"
+                            class="flex-1 input-field rounded-lg px-4 py-3 resize-none text-sm"
+                            placeholder="Respond to the probe..."></textarea>
+                        <button type="submit" disabled
+                            class="btn btn-primary rounded-lg px-4 py-3 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <i data-lucide="arrow-up" class="w-4 h-4"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right Panel: Evaluation Metrics -->
+            <div class="panel" style="flex: 0 0 320px;">
+                <!-- Header -->
+                <div class="header-bar">
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 surface rounded flex items-center justify-center">
+                            <i data-lucide="bar-chart-3" class="w-4 h-4 text-gray-500"></i>
+                        </div>
+                        <span class="text-caption">Evaluation</span>
+                    </div>
+                    <button id="reset-eval" class="p-1 text-gray-400 hover:text-gray-300">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Metrics Content -->
+                <div id="eval-card" class="scroll-container opacity-40">
+                    <div class="p-4 space-y-5">
+                        <!-- Scores -->
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-body">Quality</span>
+                                    <span id="score-quality" class="font-semibold">—</span>
+                                </div>
+                                <div class="metric-bar">
+                                    <div id="fill-quality" class="metric-fill bg-blue-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-body">Relevance</span>
+                                    <span id="score-relevance" class="font-semibold">—</span>
+                                </div>
+                                <div class="metric-bar">
+                                    <div id="fill-relevance" class="metric-fill bg-green-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-body">Specificity</span>
+                                    <span id="score-specificity" class="font-semibold">—</span>
+                                </div>
+                                <div class="metric-bar">
+                                    <div id="fill-specificity" class="metric-fill bg-yellow-500" style="width: 0%">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Badges -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div id="badge-vague" class="badge bg-gray-100 text-gray-500 text-center">Vague</div>
+                            <div id="badge-offtopic" class="badge bg-gray-100 text-gray-500 text-center">Off-Topic</div>
+                        </div>
+
+                        <!-- Reasoning -->
+                        <div>
+                            <span class="text-caption block mb-2">Reasoning</span>
+                            <div class="p-3 surface rounded-lg min-h-[100px]">
+                                <p id="eval-reasoning" class="text-body italic text-sm">Awaiting evaluation...</p>
+                            </div>
+                        </div>
+
+                        <!-- Session Info -->
+                        <div>
+                            <span class="text-caption block mb-2">Session Info</span>
+                            <div class="p-3 surface rounded-lg">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-body">Status:</span>
+                                    <span id="session-status-text" class="font-medium text-gray-600">—</span>
+                                </div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-body">Intent:</span>
+                                    <span id="intent-text"
+                                        class="font-medium text-blue-500 uppercase text-[10px] tracking-wider">—</span>
+                                </div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-body">Method:</span>
+                                    <div class="flex items-center gap-1.5">
+                                        <span id="method-icon" class="text-xs"></span>
+                                        <span id="method-text" class="font-medium text-gray-600 text-[11px]">—</span>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-body">Conversation:</span>
+                                    <span id="conversation-id-text" class="font-mono text-xs text-gray-500">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Preset scenarios
+        const presets = [
+            {
+                question: "What did you like aobut the video you just watched",
+                context: "Breaking Bad is an American crime drama television series created by Vince Gilligan. It follows Walter White, a high school chemistry teacher who, after being diagnosed with terminal lung cancer, partners with a former student, Jesse Pinkman, to produce and sell methamphetamine to secure his family's financial future. The series aired from 2008 to 2013 and is widely regarded as one of the greatest television series of all time."
+            },
+            {
+                question: "What concerns you most about the data export functionality?",
+                context: "Product manager preparing quarterly reports. Needs CSV and JSON formats. Works with datasets of 10k+ rows."
+            },
+            {
+                question: "Describe the ideal state management approach for this dashboard.",
+                context: "Frontend architect reviewing a React analytics platform. Prioritizes maintainability and team onboarding experience."
+            }
+        ];
+
+        // State
+        let ws = null;
+        let sessionActive = false;
+        let conversationId = null;
+        let currentProbeBubble = null;
+
+        // Elements
+        const els = {
+            wsUrl: document.getElementById('ws-url'),
+            connectToggle: document.getElementById('connect-toggle'),
+            statusDot: document.getElementById('status-dot'),
+            statusLabel: document.getElementById('status-label'),
+            suId: document.getElementById('su-id'),
+            moId: document.getElementById('mo-id'),
+            qsId: document.getElementById('qs-id'),
+            initQuestion: document.getElementById('init-question'),
+            initResponse: document.getElementById('init-response'),
+            presetLoader: document.getElementById('preset-loader'),
+            startSession: document.getElementById('start-session'),
+            sessionState: document.getElementById('session-state'),
+            messageList: document.getElementById('message-list'),
+            responseForm: document.getElementById('response-form'),
+            responseInput: document.getElementById('response-input'),
+            evalCard: document.getElementById('eval-card'),
+            scoreQuality: document.getElementById('score-quality'),
+            scoreRelevance: document.getElementById('score-relevance'),
+            scoreSpecificity: document.getElementById('score-specificity'),
+            fillQuality: document.getElementById('fill-quality'),
+            fillRelevance: document.getElementById('fill-relevance'),
+            fillSpecificity: document.getElementById('fill-specificity'),
+            badgeVague: document.getElementById('badge-vague'),
+            badgeOffTopic: document.getElementById('badge-offtopic'),
+            evalReasoning: document.getElementById('eval-reasoning'),
+            resetEval: document.getElementById('reset-eval'),
+            clearChat: document.getElementById('clear-chat'),
+            clearAll: document.getElementById('clear-all'),
+            resetMetrics: document.getElementById('reset-metrics'),
+            sessionStatusText: document.getElementById('session-status-text'),
+            conversationIdText: document.getElementById('conversation-id-text'),
+            intentText: document.getElementById('intent-text'),
+            methodIcon: document.getElementById('method-icon'),
+            methodText: document.getElementById('method-text')
+        };
+
+        // Utilities
+        function setMethod(method) {
+            if (!els.methodText || !els.methodIcon) return;
+
+            els.methodText.textContent = method.toUpperCase();
+            if (method === 'nlp') {
+                els.methodIcon.textContent = '🧠';
+                els.methodText.className = 'font-medium text-blue-500 text-[11px]';
+            } else if (method === 'llm') {
+                els.methodIcon.textContent = '🤖';
+                els.methodText.className = 'font-medium text-purple-500 text-[11px]';
+            } else {
+                els.methodIcon.textContent = '⚠️';
+                els.methodText.className = 'font-medium text-yellow-600 text-[11px]';
+            }
+        }
+        function addMessage(type, content) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'fade-in';
+
+            const isUser = type === 'user';
+            const isSystem = type === 'system';
+
+            wrapper.innerHTML = `
+                <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
+                    <div class="${isUser ? 'bg-blue-600 text-white' : isSystem ? 'bg-gray-100 text-gray-500 italic' : 'bg-white text-gray-800'} 
+                                ${isSystem ? 'px-3 py-2' : 'px-4 py-3'} rounded-lg max-w-[80%] shadow-sm">
+                        <div class="message-content text-sm">${content}</div>
+                    </div>
+                </div>
+            `;
+
+            if (els.messageList.children.length === 1 && els.messageList.querySelector('p')?.textContent.includes('Connect and start')) {
+                els.messageList.innerHTML = '';
+            }
+
+            els.messageList.appendChild(wrapper);
+            els.messageList.scrollTop = els.messageList.scrollHeight;
+            return wrapper.querySelector('.message-content');
+        }
+
+        function updateConnection(connected) {
+            const isConnected = connected && ws?.readyState === WebSocket.OPEN;
+
+            els.statusDot.className = `w-2 h-2 rounded-full transition-colors ${isConnected ? 'bg-green-500' : 'bg-gray-400'
+                } ${isConnected ? 'pulse-dot' : ''}`;
+
+            els.statusLabel.textContent = isConnected ? 'Connected' : 'Disconnected';
+            els.statusLabel.className = `text-xs font-medium ${isConnected ? 'text-green-600' : 'text-gray-500'}`;
+
+            els.connectToggle.innerHTML = `
+                <i data-lucide="${isConnected ? 'plug' : 'zap'}" class="w-4 h-4"></i>
+                <span>${isConnected ? 'Disconnect' : 'Connect'}</span>
+            `;
+            els.connectToggle.className = `w-full btn ${isConnected ? 'btn-secondary' : 'btn-primary'} rounded-lg px-3 py-2.5 justify-center`;
+
+            els.startSession.disabled = !isConnected || sessionActive;
+            els.responseInput.disabled = !isConnected || !sessionActive;
+            els.responseForm.querySelector('button[type="submit"]').disabled = !isConnected || !sessionActive;
+
+            els.sessionState.textContent = isConnected ? (sessionActive ? 'Session active' : 'Connected') : 'No active session';
+            els.sessionStatusText.textContent = isConnected ? (sessionActive ? 'Active' : 'Connected') : 'Disconnected';
+
+            lucide.createIcons({ nodes: [els.connectToggle] });
+        }
+
+        function updateEvaluation(eval) {
+            els.evalCard.classList.remove('opacity-40');
+
+            els.scoreQuality.textContent = `${eval.quality}/10`;
+            els.scoreRelevance.textContent = `${eval.relevance}/10`;
+            els.scoreSpecificity.textContent = `${eval.specificity}/10`;
+
+            els.fillQuality.style.width = `${(eval.quality / 10) * 100}%`;
+            els.fillRelevance.style.width = `${(eval.relevance / 10) * 100}%`;
+            els.fillSpecificity.style.width = `${(eval.specificity / 10) * 100}%`;
+
+            els.badgeVague.className = `badge text-center transition-colors ${eval.is_vague ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-500'
+                }`;
+
+            els.badgeOffTopic.className = `badge text-center transition-colors ${eval.is_off_topic ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-500'
+                }`;
+
+            els.evalReasoning.textContent = eval.reasoning || "No reasoning provided.";
+
+            // Update session info
+            if (conversationId) {
+                els.conversationIdText.textContent = conversationId.substring(0, 8) + '...';
+            }
+        }
+
+        // WebSocket handlers
+        function connect() {
+            if (ws) {
+                ws.close();
+                return;
+            }
+
+            try {
+                ws = new WebSocket(els.wsUrl.value);
+
+                ws.onopen = () => {
+                    updateConnection(true);
+                    addMessage('system', 'Connected to probing engine');
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    console.log("Received:", data);
+
+                    // Handle new schema (data.message)
+                    if (data.message === 'streaming-started') {
+                        sessionActive = true;
+                        updateConnection(true);
+                        if (data.response && data.response.metrics) {
+                            updateEvaluation(data.response.metrics);
+                        }
+                        return;
+                    }
+
+                    if (data.message === 'streaming') {
+                        if (!currentProbeBubble) {
+                            currentProbeBubble = addMessage('ai', '');
+                        }
+                        // Use the cumulative question from the response if available, or append tokens
+                        if (data.response && data.response.question) {
+                            currentProbeBubble.textContent = data.response.question;
+                        }
+                        els.messageList.scrollTop = els.messageList.scrollHeight;
+                        return;
+                    }
+
+                    if (data.message === 'streaming-ended') {
+                        if (data.response && data.response.question) {
+                            if (!currentProbeBubble) {
+                                currentProbeBubble = addMessage('ai', data.response.question);
+                            } else {
+                                currentProbeBubble.textContent = data.response.question;
+                            }
+                        }
+                        currentProbeBubble = null;
+                        return;
+                    }
+
+                    // Fallback for old schema or other message types
+                    if (data.type === 'ready') {
+                        sessionActive = true;
+                        conversationId = data.conversation_id;
+                        updateConnection(true);
+                        addMessage('system', `Session ready`);
+                    } else if (data.type === 'error' || data.error) {
+                        addMessage('system', `Error: ${data.message || 'Unknown error'}`);
+                    }
+                };
+
+                ws.onclose = () => {
+                    ws = null;
+                    sessionActive = false;
+                    updateConnection(false);
+                    addMessage('system', 'Disconnected');
+                };
+
+                ws.onerror = () => {
+                    addMessage('system', 'Connection error');
+                };
+
+            } catch (err) {
+                addMessage('system', `Failed: ${err.message}`);
+            }
+        }
+
+        // Event listeners
+        els.connectToggle.onclick = connect;
+
+        els.presetLoader.onclick = () => {
+            const preset = presets[Math.floor(Math.random() * presets.length)];
+            els.initQuestion.value = preset.question;
+            els.initContext.value = preset.context;
+        };
+
+        els.startSession.onclick = () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+            const payload = {
+                su_id: els.suId.value.trim(),
+                mo_id: els.moId.value.trim(),
+                qs_id: els.qsId.value.trim(),
+                question: els.initQuestion.value.trim(),
+                response: els.initResponse.value.trim()
+            };
+
+            if (!payload.su_id || !payload.mo_id || !payload.qs_id) {
+                addMessage('system', 'Survey, Moderator, and Question IDs are required');
+                return;
+            }
+
+            ws.send(JSON.stringify(payload));
+
+            els.messageList.innerHTML = '';
+            addMessage('system', 'Starting session with Survey ID: ' + payload.su_id);
+            addMessage('user', payload.response);
+        };
+
+        els.responseForm.onsubmit = (e) => {
+            e.preventDefault();
+            if (!ws || !sessionActive) return;
+
+            const text = els.responseInput.value.trim();
+            if (!text) return;
+
+            addMessage('user', text);
+
+            const payload = {
+                su_id: els.suId.value.trim(),
+                mo_id: els.moId.value.trim(),
+                qs_id: els.qsId.value.trim(),
+                question: els.currentQuestion || els.initQuestion.value.trim(),
+                response: text
+            };
+
+            ws.send(JSON.stringify(payload));
+
+            els.responseInput.value = '';
+            els.responseInput.style.height = 'auto';
+        };
+
+        els.responseInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                els.responseForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        els.responseInput.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+
+        // Clear functions
+        const clearChat = () => {
+            els.messageList.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-gray-400 text-center">
+                    <i data-lucide="terminal" class="w-8 h-8 mb-3 opacity-60"></i>
+                    <p class="text-sm max-w-xs">Chat cleared. Start a new session to continue testing.</p>
+                </div>
+            `;
+            lucide.createIcons();
+        };
+
+        const resetEvaluation = () => {
+            els.evalCard.classList.add('opacity-40');
+            els.scoreQuality.textContent = '—';
+            els.scoreRelevance.textContent = '—';
+            els.scoreSpecificity.textContent = '—';
+            els.fillQuality.style.width = '0%';
+            els.fillRelevance.style.width = '0%';
+            els.fillSpecificity.style.width = '0%';
+            els.badgeVague.className = 'badge bg-gray-100 text-gray-500 text-center';
+            els.badgeOffTopic.className = 'badge bg-gray-100 text-gray-500 text-center';
+            els.evalReasoning.textContent = 'Awaiting evaluation...';
+            els.sessionStatusText.textContent = '—';
+            els.conversationIdText.textContent = '—';
+        };
+
+        const resetAll = () => {
+            clearChat();
+            resetEvaluation();
+            els.initQuestion.value = '';
+            els.initContext.value = '';
+            sessionActive = false;
+            conversationId = null;
+            if (ws) {
+                ws.close();
+            }
+        };
+
+        els.clearChat.onclick = clearChat;
+        els.resetEval.onclick = resetEvaluation;
+        els.clearAll.onclick = resetAll;
+        els.resetMetrics.onclick = resetEvaluation;
+
+        // Initialize
+        lucide.createIcons();
+        els.presetLoader.click(); // Load first preset
+    </script>
+</body>
+
+</html>
