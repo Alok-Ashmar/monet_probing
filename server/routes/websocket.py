@@ -19,48 +19,10 @@ websocket_router = APIRouter(prefix="/ws", tags=["websocket", "ai-qa"])
 logger = ServerLogger()
 
 active_connections: Dict[str, WebSocket] = {}
-redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-redis_client = Redis.from_url(redis_url)
-probe_state_ttl = int(os.environ.get("REDIS_TTL_SECONDS_SESSION", 3600))
+DbSurvey = monet_db.get_collection("surveys")
+DbSurveyQuestion = monet_db.get_collection("survey-questions")
 
-db_switcher = DBSwitcher(logger=logger)
-
-
-def _is_object_id(value: str) -> bool:
-    try:
-        ObjectId(value)
-        return True
-    except Exception:
-        return False
-
-
-def _is_int_id(value: str) -> bool:
-    return value.isdigit()
-
-def _probe_state_key(su_id: str, qs_id: str, mo_id: str) -> str:
-    return f"probe_state:{su_id}:{qs_id}:{mo_id}"
-
-def _load_probe_state(key: str) -> dict:
-    try:
-        cached = redis_client.get(key)
-        if not cached:
-            return {}
-        return json.loads(cached)
-    except Exception as e:
-        logger.error("Failed to load probe state from Redis")
-        logger.error(e)
-        return {}
-
-def _save_probe_state(key: str, state: dict) -> None:
-    try:
-        payload = json.dumps(state)
-        if probe_state_ttl > 0:
-            redis_client.setex(key, probe_state_ttl, payload)
-        else:
-            redis_client.set(key, payload)
-    except Exception as e:
-        logger.error("Failed to save probe state to Redis")
-        logger.error(e)
+probes = {}
 
 @websocket_router.websocket("/ai-qa")
 async def websocket_ai_qa(websocket: WebSocket):
@@ -70,79 +32,41 @@ async def websocket_ai_qa(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
-
-            su_id = str(survey_response.su_id)
-            qs_id = str(survey_response.qs_id)
-            if _is_object_id(su_id) and _is_object_id(qs_id):
-                db_type = "mongo"
-            elif _is_int_id(su_id) and _is_int_id(qs_id):
-                db_type = "mysql"
-            else:
+            
+            # Validate the survey exists
+            survey = DbSurvey.find_one({"_id": ObjectId(survey_response.su_id)})
+            if not survey:
                 await websocket.send_json({
                     "error": True,
-                    "message": "Invalid survey or question id format",
-                    "code": 400
+                    "message": "Survey not found",
+                    "code": 404
                 })
                 continue
-            
-            redis_key = f"survey_details:{survey_response.su_id}:{survey_response.qs_id}"
-            cached_payload = redis_client.get(redis_key)
-            if not cached_payload:
-                output, error = await db_switcher.fetch_and_cache_survey_details(
-                    db_type=db_type,
-                    survey_response=survey_response,
-                )
-                if error or not output:
-                    await websocket.send_json(error or {
-                        "error": True,
-                        "message": "Survey details not found",
-                        "code": 404
-                    })
-                    continue
-                payload = output
-            else:
-                payload = json.loads(cached_payload)
-            
-            survey_data = payload.get("survey") or {}
-            question_data = payload.get("question") or {}
 
-            survey_config = SurveyConfig(
-                language=survey_data.get("language", "English"),
-                add_context=survey_data.get("add_context", True),
-            )
-            survey = SimpleNamespace(
-                id=survey_response.su_id,
-                description=survey_data.get("survey_description", "-"),
-                config=survey_config,
-            )
+            question = DbSurveyQuestion.find_one({"_id": ObjectId(survey_response.qs_id)})
+            if not question:
+                await websocket.send_json({
+                    "error": True,
+                    "message": "Question not found",
+                    "code": 404
+                })
+                continue
 
-            question_config = QuestionConfig(
-                probes=question_data.get("min_probe", 0),
-                max_probes=question_data.get("max_probe", 0),
-                quality_threshold=question_data.get("quality_threshold", 4),
-                gibberish_score=question_data.get("gibberish_score", 4),
-                add_context=question_data.get("add_context", True),
-            )
-            question = SimpleNamespace(
-                id=survey_response.qs_id,
-                question=question_data.get("question", ""),
-                description=question_data.get("question_description", ""),
-                config=question_config,
-            )
+            survey = PySurvey(**survey)
+            question = PySurveyQuestion(**question)
 
             try:
                 probe = None
-                state_key = _probe_state_key(str(survey_response.su_id), str(survey_response.qs_id), str(survey_response.mo_id))
-                probe_state = _load_probe_state(state_key)
-                session_no = int(probe_state.get("session_no", 0))
-                probe = Probe(mo_id=survey_response.mo_id, metadata=survey, question=question, simple_store=True, session_no=session_no, survey_details=survey_response)
-                probe.apply_state(probe_state)
-                if (survey_response.question or "").strip() == (question.question or "").strip():
-                    probe.clear_memory()                    
+                key = f"{survey_response.su_id}-{survey_response.qs_id}-{survey_response.mo_id}"
+                if key in probes:
+                    probe = probes[key]
+                else:
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=0, survey_details=survey_response)
+                    probes[key] = probe
+                if survey_response.question == question.question:
                     session_no = probe.session_no + 1
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=True,session_no=session_no, survey_details=survey_response)
-                    probe.apply_state({"session_no": session_no, "counter": 0, "ended": False, "simple_store": True})
-                _save_probe_state(state_key, probe.to_state())
+                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=False,session_no=session_no, survey_details=survey_response)
+                    probes[key] = probe   
 
                 # Generate follow-up using the probe
                 stream, metric_stream = probe.gen_streamed_follow_up(survey_response.question, survey_response.response)
@@ -181,18 +105,10 @@ async def websocket_ai_qa(websocket: WebSocket):
                         await websocket.send_json(final_response)
 
                 await websocket.send_json(ended_response)
-                _save_probe_state(state_key, probe.to_state())
-                
                 if probe.simple_store:
                     nsight_v2 = NSIGHT_v2(**{**metric.model_dump(), "question": survey_response.question, "response": survey_response.response})
-                    await db_switcher.simple_store_response(
-                        db_type=db_type,
-                        nsight_v2=nsight_v2,
-                        survey_response=survey_response,
-                        probe=probe,
-                        session_no=session_no,
-                    )
-
+                    probe.store_response(nsight_v2, session_no)
+                    
             except Exception as e:
                 logger.error(f"Error in microservice WS communication: {e}")
                 await websocket.send_json({
