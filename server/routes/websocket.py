@@ -33,7 +33,7 @@ async def websocket_ai_qa(websocket: WebSocket):
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
             
-            # Validate the survey exists
+          `  # Validate the survey exists
             survey = DbSurvey.find_one({"_id": ObjectId(survey_response.su_id)})
             if not survey:
                 await websocket.send_json({
@@ -42,7 +42,7 @@ async def websocket_ai_qa(websocket: WebSocket):
                     "code": 404
                 })
                 continue
-
+`
             question = DbSurveyQuestion.find_one({"_id": ObjectId(survey_response.qs_id)})
             if not question:
                 await websocket.send_json({
