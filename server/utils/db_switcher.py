@@ -227,7 +227,7 @@ class MySQLSurveyRepository:
         db: Any = None,
     ) -> Any:
         """Store probe response in MySQL."""
-        from models.sql.models import SurveyResponseTest
+        from models.models import SurveyResponseTest
         from modules.SQL_Wrapper import AsyncSessionLocal
 
         new_survey_response = SurveyResponseTest(
