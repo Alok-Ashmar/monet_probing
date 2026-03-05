@@ -1,22 +1,28 @@
-from enum import Enum
+from typing import Protocol, TypedDict
+
 from bson import ObjectId
 from pydantic_core import core_schema
 
 
-class LLMEnum(str, Enum):
-    chatgpt = "chatgpt"
-    deepseek = "deepseek"
-    grok = "grok"
-    claude = "claude"
-    llama = "llama"
-    ollama_mistral = "ollama-mistral"
-    ollama_tiny_llama = "ollama-tiny-llama"
+class ErrorDict(TypedDict):
+    """Standard error payload for fetch failures."""
 
+    error: bool
+    message: str
+    code: int
+
+
+class SurveyResponseLike(Protocol):
+    """Minimum interface required for survey response input."""
+
+    su_id: str
+    qs_id: str
 
 class PyObjectId(ObjectId):
     """
     Custom type for MongoDB ObjectId,
     inheriting from bson.ObjectId to maintain ObjectId functionality.
+    This type handles validation and serialization seamlessly for Pydantic models.
     """
 
     @classmethod
@@ -38,7 +44,6 @@ class PyObjectId(ObjectId):
             ]
         )
 
-        # CORRECTED LINE: Changed to field_after_validator_function
         pyobjectid_schema = core_schema.with_info_after_validator_function(
             cls.validate_pyobjectid_input,  # Our dedicated input validator
             validation_schema,
@@ -82,9 +87,10 @@ class PyObjectId(ObjectId):
 
     # --- Validation Logic ---
     @classmethod
-    def validate_pyobjectid_input(
-        cls, v, info
-    ):  # This method handles the actual validation logic for inputs
+    def validate_pyobjectid_input(cls, v, info):
+        """
+        Handles the actual validation logic for inputs coming into fields typed as PyObjectId.
+        """
         if isinstance(v, ObjectId):
             return cls(v)
         if isinstance(v, str):

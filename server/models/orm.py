@@ -1,27 +1,29 @@
 from datetime import datetime
-from enum import Enum as PyEnum
-
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, Enum,
-    ForeignKey, Text, JSON
+    Column,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Text,
+    JSON,
 )
 from sqlalchemy.orm import relationship, declarative_base
 
+from .enums import StatusEnum
+
 Base = declarative_base()
 
-# ----- ENUMS -----
-class StatusEnum(str, PyEnum):
-    active = "active"
-    draft = "draft"
-
-class StrategyEnum(str, PyEnum):
-    presence = "presence"
-    absence = "absence"
-    avoid_on = "avoid_on"
-    canned = "canned"
 
 # ----- STUDY SUMMARY -----
 class StudySummary(Base):
+    """
+    SQLAlchemy model representing the summary of a study.
+    Tracks overall statistics and processing methods for a specific study.
+    """
+
     __tablename__ = "probe_study_summary"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -32,15 +34,21 @@ class StudySummary(Base):
     processing_method = Column(String(255), nullable=True)
     response_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
+
     question_summaries = relationship(
         "QuestionSummary",
         back_populates="study_summary_id",
         # cascade="all, delete-orphan",
     )
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
+
 
 class QuestionSummary(Base):
+    """
+    SQLAlchemy model representing the summary of a specific question within a study.
+    Linked to a StudySummary record.
+    """
+
     __tablename__ = "probe_question_summary"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -49,12 +57,19 @@ class QuestionSummary(Base):
     question = Column(Text)
     summary = Column(JSON, default={})
     SPSS = Column(JSON, nullable=True)
-    study_summary_id = relationship("StudySummary", back_populates="question_summaries")
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
 
+    study_summary_id = relationship("StudySummary", back_populates="question_summaries")
+
+
 # ----- SURVEY -----
 class Survey(Base):
+    """
+    SQLAlchemy model representing a Survey configuration.
+    Contains metadata such as title, LLM settings, and display language.
+    """
+
     __tablename__ = "probe_survey"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -67,13 +82,18 @@ class Survey(Base):
     language = Column(String(50), default="English")
     add_context = Column(Boolean, default=False)
     config = Column(JSON, default={})
+    status = Column(SQLEnum(StatusEnum), default=StatusEnum.draft)
     created_at = Column(DateTime, default=datetime.now)
-    status = Column(Enum(StatusEnum), default=StatusEnum.draft)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, insert_default=datetime.utcnow, onupdate=datetime.now)
+    updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
+
 
 # ----- SURVEY QUESTION -----
 class SurveyQuestion(Base):
+    """
+    SQLAlchemy model representing a specific question in a Survey.
+    Includes the actual question text, sequence position, and specific configurations.
+    """
+
     __tablename__ = "probe_survey_question"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -85,10 +105,16 @@ class SurveyQuestion(Base):
     seq_num = Column(Integer, default=0)
     config = Column(JSON, default={})
     created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, insert_default=datetime.utcnow, onupdate=datetime.now)
+    updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
+
 
 # ----- SURVEY RESPONSE -----
 class SurveyResponse(Base):
+    """
+    SQLAlchemy model representing a user's response to a SurveyQuestion.
+    Stores the response text, associated quality metrics, and session information.
+    """
+
     __tablename__ = "probe_survey_response"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -107,11 +133,17 @@ class SurveyResponse(Base):
     consistency = Column(Integer, default=0)
     confidence = Column(Integer, default=0)
     qs_no = Column(Integer)
+    session_no = Column(Integer)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
-    session_no = Column(Integer)
+
 
 class SurveyResponseTest(Base):
+    """
+    SQLAlchemy model acting as a test version of SurveyResponse.
+    Has identical structure to SurveyResponse for testing without modifying production data.
+    """
+
     __tablename__ = "probe_survey_response_test"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -130,6 +162,6 @@ class SurveyResponseTest(Base):
     consistency = Column(Integer, default=0)
     confidence = Column(Integer, default=0)
     qs_no = Column(Integer)
+    session_no = Column(Integer)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, insert_default=datetime.now, onupdate=datetime.now)
-    session_no = Column(Integer)

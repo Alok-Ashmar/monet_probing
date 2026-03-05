@@ -10,7 +10,7 @@ from modules.LLMAdapter import LLMAdapter
 from modules.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
-from models.Survey import PySurvey, PySurveyQuestion, SurveyResponse
+from models.schemas import PySurvey, PySurveyQuestion, SurveyResponse
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 

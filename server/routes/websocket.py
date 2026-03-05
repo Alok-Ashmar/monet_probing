@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from modules.ProdProbe_v2 import Probe
 from modules.ServerLogger import ServerLogger
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from models.Survey import SurveyResponse, SurveyConfig, QuestionConfig
+from models.schemas import SurveyResponse, SurveyConfig, QuestionConfig
 
 websocket_router = APIRouter(prefix="/ws", tags=["websocket", "probe_engine"])
 logger = ServerLogger()
