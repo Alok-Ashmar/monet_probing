@@ -1,13 +1,12 @@
 import os
+import json
 import pytz
 from redis import Redis
 from bson import ObjectId
 from datetime import datetime
-from langsmith import traceable
 from typing import AsyncIterable
 from utils.intent import extract_intent
 from modules.LLMAdapter import LLMAdapter
-from modules.MongoWrapper import monet_db
 from modules.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
@@ -17,8 +16,6 @@ from langchain_community.chat_message_histories import RedisChatMessageHistory
 
 india = pytz.timezone('Asia/Kolkata')
 logger = ServerLogger()
-
-QnAs = monet_db.get_collection("QnAs")
 
 class Probe(LLMAdapter):
 
@@ -36,7 +33,7 @@ class Probe(LLMAdapter):
         ):
         super().__init__(metadata.config.llm, 0.7, streaming=True)
         self.id = f"{metadata.id}-{question.id}-{mo_id}"
-        self.__metric_llm__ = self.llm.with_structured_output(NSIGHT)
+        self.__metric_llm__ = self.llm.with_structured_output(NSIGHT.model_json_schema())
         self.metadata = metadata
         self.counter = 0
         self.simple_store = simple_store
@@ -47,6 +44,20 @@ class Probe(LLMAdapter):
         self.ended = False
         self.session_no = session_no
         self.survey_details = survey_details
+        
+        # Load counter from probe state
+        self._history_redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        self._redis = Redis.from_url(self._history_redis_url)
+        
+        try:
+            state_key = f"probe_state:{self.su_id}:{self.qs_id}:{self.mo_id}"
+            cached_state = self._redis.get(state_key)
+            if cached_state:
+                state_dict = json.loads(cached_state)
+                if state_dict.get("session_no") == self.session_no:
+                    self.counter = int(state_dict.get("counter", 0))
+        except Exception as e:
+            logger.error(f"Failed to load counter from Redis state: {e}")
 
         if question.config.probes > question.config.max_probes:
             self.invalid = True
@@ -104,12 +115,6 @@ class Probe(LLMAdapter):
                     "rule-chk": self.__prompt_chunks__["rule-chk"]
                 }
             ).text
-    
-        self._history_redis_url = os.environ.get(
-            "REDIS_URL",
-            "redis://localhost:6379/0"
-        )
-        self._redis = Redis.from_url(self._history_redis_url)
 
         # survey level context (switch)
         if self.metadata.config.add_context:
@@ -204,38 +209,6 @@ class Probe(LLMAdapter):
         if not self._history.messages:
             self._history.add_message(SystemMessage(content=self.__system_prompt__))
 
-    def to_state(self) -> dict:
-        return {
-            "session_no": self.session_no,
-            "counter": self.counter,
-            "ended": self.ended,
-            "simple_store": self.simple_store,
-        }
-
-    def apply_state(self, state: dict):
-        if not state:
-            return
-        try:
-            self.counter = int(state.get("counter", self.counter))
-        except Exception:
-            pass
-        try:
-            self.ended = bool(state.get("ended", self.ended))
-        except Exception:
-            pass
-        try:
-            self.simple_store = bool(state.get("simple_store", self.simple_store))
-        except Exception:
-            pass
-
-    def clear_memory(self):
-        try:
-            self._history.clear()
-        except Exception as e:
-            logger.error("Failed to clear Redis chat history")
-            logger.error(e)
-
-
     async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict):
         full_content = ""
         async for chunk in chain.astream(inputs, config=run_config):
@@ -246,12 +219,9 @@ class Probe(LLMAdapter):
             self._history.add_ai_message(full_content)
 
 
-    @traceable(run_type="chain", name="Gen Streamed Follow Up")
     def gen_streamed_follow_up(self, question: str, response: str) -> tuple[AsyncIterable[str], AsyncIterable[NSIGHT]]:
-        next_counter = self.counter + 1
-        user_text = f"Response {next_counter}. {response}"
+        user_text = f"Response {self.counter}. {response}"
         self._history.add_user_message(user_text)
-        self.counter = next_counter
         prompt = ChatPromptTemplate.from_messages(self._history.messages)
         chain = prompt | self.llm
         metric_chain = prompt | self.__metric_llm__
@@ -271,21 +241,3 @@ class Probe(LLMAdapter):
         
         metric_llm_stream: NSIGHT = metric_chain.astream({}, config={**run_config, "tags": ["metrics", "websocket"]})
         return (llm_stream, metric_llm_stream)
-
-
-    @traceable(run_type="tool", name="Store Response")
-    def store_response(self, nsight_v2: NSIGHT_v2, session_no: int):
-        now_india = datetime.now(india)
-        insert_one_res = QnAs.insert_one({
-            **nsight_v2.model_dump(),
-            "ended": self.ended,
-            "mo_id": self.mo_id,
-            "su_id": self.su_id, 
-            "qs_id": self.qs_id,
-            "qs_no": self.counter + 1,
-            "created_at": now_india.isoformat(),
-            "session_no": session_no,
-        })
-        logger.info("Inserted one doc successfully")
-        logger.info(insert_one_res)
-        return insert_one_res

@@ -2,35 +2,17 @@ import os
 import json
 from redis import Redis
 from typing import Dict
-from bson import ObjectId
 from types import SimpleNamespace
+from modules.ProdProbe_v2 import Probe
 from modules.ServerLogger import ServerLogger
-from modules.ProdProbe_v2 import Probe, NSIGHT_v2
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models.Survey import SurveyResponse, SurveyConfig, QuestionConfig
-from utils.db_switcher import DBSwitcher
 
-websocket_router = APIRouter(prefix="/ws", tags=["websocket", "ai-qa"])
+websocket_router = APIRouter(prefix="/ws", tags=["websocket", "probe_engine"])
 logger = ServerLogger()
 
 active_connections: Dict[str, WebSocket] = {}
-redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-redis_client = Redis.from_url(redis_url)
-probe_state_ttl = int(os.environ.get("REDIS_TTL_SECONDS_SESSION", 3600))
-
-db_switcher = DBSwitcher(logger=logger)
-
-
-def _is_object_id(value: str) -> bool:
-    try:
-        ObjectId(value)
-        return True
-    except Exception:
-        return False
-
-
-def _is_int_id(value: str) -> bool:
-    return value.isdigit()
+redis_client = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
 
 def _probe_state_key(su_id: str, qs_id: str, mo_id: str) -> str:
     return f"probe_state:{su_id}:{qs_id}:{mo_id}"
@@ -46,19 +28,8 @@ def _load_probe_state(key: str) -> dict:
         logger.error(e)
         return {}
 
-def _save_probe_state(key: str, state: dict) -> None:
-    try:
-        payload = json.dumps(state)
-        if probe_state_ttl > 0:
-            redis_client.setex(key, probe_state_ttl, payload)
-        else:
-            redis_client.set(key, payload)
-    except Exception as e:
-        logger.error("Failed to save probe state to Redis")
-        logger.error(e)
-
-@websocket_router.websocket("/ai-qa")
-async def websocket_ai_qa(websocket: WebSocket):
+@websocket_router.websocket("/probe_engine")
+async def websocket_probe_engine(websocket: WebSocket):
     await websocket.accept()
     
     try:
@@ -66,40 +37,21 @@ async def websocket_ai_qa(websocket: WebSocket):
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
 
-            su_id = str(survey_response.su_id)
-            qs_id = str(survey_response.qs_id)
-            if _is_object_id(su_id) and _is_object_id(qs_id):
-                db_type = "mongo"
-            elif _is_int_id(su_id) and _is_int_id(qs_id):
-                db_type = "mysql"
-            else:
+            try:
+                redis_key = f"survey_details:{survey_response.su_id}:{survey_response.qs_id}"
+                cached_survey_details = json.loads(redis_client.get(redis_key))
+                
+            except Exception as e:
+                logger.error("Failed to load survey details from Redis")
+                logger.error(e)
                 await websocket.send_json({
                     "error": True,
-                    "message": "Invalid survey or question id format",
-                    "code": 400
+                    "message": "Failed to load survey details from Redis",
+                    "code": 500
                 })
-                continue
-            
-            redis_key = f"survey_details:{survey_response.su_id}:{survey_response.qs_id}"
-            cached_payload = redis_client.get(redis_key)
-            if not cached_payload:
-                output, error = await db_switcher.fetch_and_cache_survey_details(
-                    db_type=db_type,
-                    survey_response=survey_response,
-                )
-                if error or not output:
-                    await websocket.send_json(error or {
-                        "error": True,
-                        "message": "Survey details not found",
-                        "code": 404
-                    })
-                    continue
-                payload = output
-            else:
-                payload = json.loads(cached_payload)
-            
-            survey_data = payload.get("survey") or {}
-            question_data = payload.get("question") or {}
+
+            survey_data = cached_survey_details.get("survey") or {}
+            question_data = cached_survey_details.get("question") or {}
 
             survey_config = SurveyConfig(
                 language=survey_data.get("language", "English"),
@@ -126,29 +78,22 @@ async def websocket_ai_qa(websocket: WebSocket):
             )
 
             try:
-                probe = None
+                running_probe = None
                 state_key = _probe_state_key(str(survey_response.su_id), str(survey_response.qs_id), str(survey_response.mo_id))
-                probe_state = _load_probe_state(state_key)
-                session_no = int(probe_state.get("session_no", 0))
-                probe = Probe(mo_id=survey_response.mo_id, metadata=survey, question=question, simple_store=True, session_no=session_no, survey_details=survey_response)
-                probe.apply_state(probe_state)
-                if (survey_response.question or "").strip() == (question.question or "").strip():
-                    probe.clear_memory()                    
-                    session_no = probe.session_no + 1
-                    probe = Probe(mo_id=survey_response.mo_id,metadata=survey,question=question,simple_store=True,session_no=session_no, survey_details=survey_response)
-                    probe.apply_state({"session_no": session_no, "counter": 0, "ended": False, "simple_store": True})
-                _save_probe_state(state_key, probe.to_state())
+                cached_probe_state = _load_probe_state(state_key)
+                session_no = int(cached_probe_state.get("session_no", 0))
+                running_probe = Probe(mo_id=survey_response.mo_id, metadata=survey, question=question, simple_store=True, session_no=session_no, survey_details=survey_response)
 
                 # Generate follow-up using the probe
-                stream, metric_stream = probe.gen_streamed_follow_up(survey_response.question, survey_response.response)
+                stream, metric_stream = running_probe.gen_streamed_follow_up(survey_response.question, survey_response.response)
                 final_response = {
                     "error": False,
                     "message": "streaming-started",
                     "code": 200,
                     "response": {
                         "question": "",
-                        "min_probing": probe.question.config.probes,
-                        "max_probing": probe.question.config.max_probes,
+                        "min_probing": running_probe.question.config.probes,
+                        "max_probing": running_probe.question.config.max_probes,
                     }
                 }
                 ended_response = {}
@@ -157,9 +102,9 @@ async def websocket_ai_qa(websocket: WebSocket):
                     final_response["message"] = "streaming-started"
                     final_response["response"] = {
                         **final_response["response"],
-                        "ended": True if metric.quality >= probe.question.config.quality_threshold else False,
-                        "metrics": metric.model_dump(),
-                        "is_gibberish": True if metric.gibberish_score > question.config.gibberish_score else False
+                        "ended": True if metric.get("quality", 0) >= running_probe.question.config.quality_threshold else False,
+                        "metrics": metric,
+                        "is_gibberish": True if metric.get("gibberish_score", 0) > running_probe.question.config.gibberish_score else False
                     }
                     ended_response = final_response.copy()
                     ended_response["message"] = "streaming-ended"
@@ -171,22 +116,11 @@ async def websocket_ai_qa(websocket: WebSocket):
                         final_response["response"] = {
                             **final_response["response"],
                             "question": chunk.content,
-                            "ended": probe.ended,
+                            "ended": running_probe.ended,
                         }
                         await websocket.send_json(final_response)
 
                 await websocket.send_json(ended_response)
-                _save_probe_state(state_key, probe.to_state())
-                
-                if probe.simple_store:
-                    nsight_v2 = NSIGHT_v2(**{**metric.model_dump(), "question": survey_response.question, "response": survey_response.response})
-                    await db_switcher.simple_store_response(
-                        db_type=db_type,
-                        nsight_v2=nsight_v2,
-                        survey_response=survey_response,
-                        probe=probe,
-                        session_no=session_no,
-                    )
 
             except Exception as e:
                 logger.error("Error in websocket AI QA:")
