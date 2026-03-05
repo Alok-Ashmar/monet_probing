@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import AsyncIterable
 from utils.intent import extract_intent
 from modules.LLMAdapter import LLMAdapter
-from modules.ServerLogger import ServerLogger
+from utils.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
 from models.schemas import PySurvey, PySurveyQuestion, SurveyResponse
@@ -209,9 +209,9 @@ class Probe(LLMAdapter):
         if not self._history.messages:
             self._history.add_message(SystemMessage(content=self.__system_prompt__))
 
-    async def _stream_with_history_update(self, chain, inputs: dict, run_config: dict):
+    async def _stream_with_history_update(self, chain, inputs: dict):
         full_content = ""
-        async for chunk in chain.astream(inputs, config=run_config):
+        async for chunk in chain.astream(inputs):
             content = chunk.content if hasattr(chunk, "content") else str(chunk)
             full_content += content
             yield chunk
@@ -226,18 +226,7 @@ class Probe(LLMAdapter):
         chain = prompt | self.llm
         metric_chain = prompt | self.__metric_llm__
 
-        # Define metadata for tracing (User ID, Survey ID, Question ID)
-        run_config = {
-            "metadata": {
-                "mo_id": self.mo_id,
-                "su_id": str(self.su_id),
-                "qs_id": str(self.qs_id),
-                "session_no": self.session_no
-            },
-            "tags": ["probe", "websocket"]
-        }
-
-        llm_stream: str = self._stream_with_history_update(chain, {}, run_config)
+        llm_stream: str = self._stream_with_history_update(chain, {})
         
-        metric_llm_stream: NSIGHT = metric_chain.astream({}, config={**run_config, "tags": ["metrics", "websocket"]})
+        metric_llm_stream: NSIGHT = metric_chain.astream({})
         return (llm_stream, metric_llm_stream)

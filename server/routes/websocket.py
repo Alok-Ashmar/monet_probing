@@ -4,7 +4,7 @@ from redis import Redis
 from typing import Dict
 from types import SimpleNamespace
 from modules.ProdProbe_v2 import Probe
-from modules.ServerLogger import ServerLogger
+from utils.ServerLogger import ServerLogger
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models.schemas import SurveyResponse, SurveyConfig, QuestionConfig
 
