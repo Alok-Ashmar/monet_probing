@@ -10,9 +10,8 @@ from sqlalchemy import (
     Text,
     JSON,
 )
-from sqlalchemy.orm import relationship, declarative_base
-
 from .enums import StatusEnum
+from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
 

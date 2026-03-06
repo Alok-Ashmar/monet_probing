@@ -1,7 +1,7 @@
 from typing import List
 from pydantic import BaseModel, Field
-from models.LLMAdapter import LLMAdapter
-from langchain_core.prompts import PromptTemplate
+# from models.LLMAdapter import LLMAdapter
+# from langchain_core.prompts import PromptTemplate
 
 class NSIGHT(BaseModel):
     """Metrics for evaluating LLM response quality and characteristics"""

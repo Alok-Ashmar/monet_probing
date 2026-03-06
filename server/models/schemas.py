@@ -1,8 +1,7 @@
 from datetime import datetime
+from .types import PyObjectId
 from typing import List, Optional
 from pydantic import BaseModel, Field
-
-from .types import PyObjectId
 from .enums import StatusEnum, LLMEnum, StrategyEnum
 
 

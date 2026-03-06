@@ -3,7 +3,7 @@ import json
 from redis import Redis
 from typing import Dict
 from types import SimpleNamespace
-from modules.ProdProbe_v2 import Probe
+from services.survey_probe import Probe
 from services.ServerLogger import ServerLogger
 from services.repetition_checker import RepetitionChecker
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect

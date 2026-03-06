@@ -1,7 +1,6 @@
-from typing import Protocol, TypedDict
-
 from bson import ObjectId
 from pydantic_core import core_schema
+from typing import Protocol, TypedDict
 
 
 class ErrorDict(TypedDict):
@@ -17,6 +16,7 @@ class SurveyResponseLike(Protocol):
 
     su_id: str
     qs_id: str
+
 
 class PyObjectId(ObjectId):
     """

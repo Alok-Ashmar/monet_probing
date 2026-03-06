@@ -5,11 +5,11 @@ from redis import Redis
 from bson import ObjectId
 from datetime import datetime
 from typing import AsyncIterable
-from services.intent_extractor import extract_intent
-from models.LLMAdapter import LLMAdapter
+from models.llm_adapter import LLMAdapter
 from services.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
-from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
+from services.intent_extractor import extract_intent
+from models.response_metrics_schema import NSIGHT, NSIGHT_v2
 from models.schemas import PySurvey, PySurveyQuestion, SurveyResponse
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
