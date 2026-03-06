@@ -5,6 +5,7 @@ from typing import Dict
 from types import SimpleNamespace
 from modules.ProdProbe_v2 import Probe
 from utils.ServerLogger import ServerLogger
+from utils.repetition_checker import RepetitionChecker
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models.schemas import SurveyResponse, SurveyConfig, QuestionConfig
 
@@ -77,6 +78,9 @@ async def websocket_probe_engine(websocket: WebSocket):
                 config=question_config,
             )
 
+            repetition_checker = RepetitionChecker()
+            is_repetition = repetition_checker.check_repetition(survey_response)
+
             try:
                 running_probe = None
                 state_key = _probe_state_key(str(survey_response.su_id), str(survey_response.qs_id), str(survey_response.mo_id))
@@ -104,7 +108,8 @@ async def websocket_probe_engine(websocket: WebSocket):
                         **final_response["response"],
                         "ended": True if metric.get("quality", 0) >= running_probe.question.config.quality_threshold else False,
                         "metrics": metric,
-                        "is_gibberish": True if metric.get("gibberish_score", 0) > running_probe.question.config.gibberish_score else False
+                        "is_gibberish": True if metric.get("gibberish_score", 0) > running_probe.question.config.gibberish_score else False,
+                        "is_repetition": is_repetition,
                     }
                     ended_response = final_response.copy()
                     ended_response["message"] = "streaming-ended"

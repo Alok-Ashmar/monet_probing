@@ -32,7 +32,7 @@ class Probe(LLMAdapter):
         survey_details: SurveyResponse = None,
         ):
         super().__init__(metadata.config.llm, 0.7, streaming=True)
-        self.id = f"{metadata.id}-{question.id}-{mo_id}"
+        self.id = f"{metadata.id}:{mo_id}:{question.id}"
         self.__metric_llm__ = self.llm.with_structured_output(NSIGHT.model_json_schema())
         self.metadata = metadata
         self.counter = 0
