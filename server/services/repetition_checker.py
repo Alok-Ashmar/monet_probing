@@ -3,7 +3,7 @@ import re
 import json
 from redis import Redis
 from models.schemas import SurveyResponse
-from utils.ServerLogger import ServerLogger
+from services.ServerLogger import ServerLogger
 
 logger = ServerLogger()
 

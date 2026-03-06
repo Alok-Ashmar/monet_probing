@@ -5,9 +5,9 @@ from redis import Redis
 from bson import ObjectId
 from datetime import datetime
 from typing import AsyncIterable
-from utils.intent import extract_intent
-from modules.LLMAdapter import LLMAdapter
-from utils.ServerLogger import ServerLogger
+from services.intent_extractor import extract_intent
+from models.LLMAdapter import LLMAdapter
+from services.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
 from modules.ProdNSightGenerator import NSIGHT, NSIGHT_v2
 from models.schemas import PySurvey, PySurveyQuestion, SurveyResponse

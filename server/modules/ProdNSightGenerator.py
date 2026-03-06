@@ -1,6 +1,6 @@
 from typing import List
 from pydantic import BaseModel, Field
-from modules.LLMAdapter import LLMAdapter
+from models.LLMAdapter import LLMAdapter
 from langchain_core.prompts import PromptTemplate
 
 class NSIGHT(BaseModel):

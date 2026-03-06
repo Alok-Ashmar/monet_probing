@@ -4,8 +4,8 @@ from redis import Redis
 from typing import Dict
 from types import SimpleNamespace
 from modules.ProdProbe_v2 import Probe
-from utils.ServerLogger import ServerLogger
-from utils.repetition_checker import RepetitionChecker
+from services.ServerLogger import ServerLogger
+from services.repetition_checker import RepetitionChecker
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models.schemas import SurveyResponse, SurveyConfig, QuestionConfig
 
