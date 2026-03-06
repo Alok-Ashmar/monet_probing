@@ -33,12 +33,3 @@ class StrategyEnum(str, Enum):
     absence = "absence"
     avoid_on = "avoid_on"
     canned = "canned"
-
-
-class MailTypeEnum(str, Enum):
-    """
-    Enum representing the types of mail that can be sent.
-    """
-
-    contact_admin = "contact_admin"
-    reset_password = "reset_password"

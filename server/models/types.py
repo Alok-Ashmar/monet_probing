@@ -3,21 +3,6 @@ from pydantic_core import core_schema
 from typing import Protocol, TypedDict
 
 
-class ErrorDict(TypedDict):
-    """Standard error payload for fetch failures."""
-
-    error: bool
-    message: str
-    code: int
-
-
-class SurveyResponseLike(Protocol):
-    """Minimum interface required for survey response input."""
-
-    su_id: str
-    qs_id: str
-
-
 class PyObjectId(ObjectId):
     """
     Custom type for MongoDB ObjectId,

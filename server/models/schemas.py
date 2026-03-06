@@ -128,14 +128,6 @@ class PySurveyQuestion(SurveyQuestion):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
 
 
-class PySurveyResponse(SurveyResponse):
-    """
-    SurveyResponse schema bound to a MongoDB ID.
-    """
-
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-
-
 class PySurvey(Survey):
     """
     Full Survey schema bound to MongoDB IDs, complete with its list of questions.
@@ -143,85 +135,3 @@ class PySurvey(Survey):
 
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     questions: List[PySurveyQuestion] = []
-
-
-class CreateSurvey(Survey):
-    """
-    Schema for handling Survey creation payloads.
-    """
-
-    id: Optional[PyObjectId] = None
-    questions: List[SurveyQuestion]
-
-
-# -- Controller / DB Switcher Wrapper Schemas (Pd represents Database layer structures)
-class PdSurvey(BaseModel):
-    """
-    Database-agnostic representation of a Survey used when interacting with the database service layer.
-    """
-
-    id: Optional[int] = None
-    study_id: Optional[int] = None
-    cnt_id: int = 0
-    survey_description: str
-    survey_title: Optional[str] = None
-    llm: LLMEnum = LLMEnum("chatgpt")
-    language: str = "English"
-    add_context: bool = False
-    config: SurveyConfig = Field(default_factory=SurveyConfig)
-
-
-class PdSurveyQuestion(BaseModel):
-    """
-    Database-agnostic representation of a Survey Question used with the database service layer.
-    """
-
-    id: Optional[int] = None
-    qs_id: Optional[int] = None
-    su_id: Optional[int] = None  # this will correspond to survey.id
-    cnt_id: int = 0
-    question: str = "<question>"
-    description: str = "<description>"
-    seq_num: int = Field(
-        default_factory=int, description="Sequence position of the question"
-    )
-    config: QuestionConfig = Field(default_factory=QuestionConfig)
-
-
-# -- API Response / Auth Schemas
-class GetSurveyResponse(BaseModel):
-    """
-    Schema representing a standardized API response when fetching Surveys.
-    """
-
-    code: int
-    error: bool
-    message: str
-    response: List[PySurvey]
-
-
-class AccessRequest(BaseModel):
-    """
-    Schema representing a user request for platform access.
-    """
-
-    firstName: str
-    lastName: str
-    email: str
-    organization: str
-    department: str
-    jobTitle: str
-    requestType: str
-    message: str
-
-
-class get_token(BaseModel):
-    """
-    Schema representing the payload to request an authentication token.
-    """
-
-    client_id: str
-    client_secret: str
-    code: str
-    redirect_uri: str
-    grant_type: str
