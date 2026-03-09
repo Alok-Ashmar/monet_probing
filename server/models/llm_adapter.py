@@ -26,6 +26,7 @@ class LLMAdapter:
                 organization=OPENAI_ORG,
                 api_key=OPENAI_KEY,
                 model="gpt-4o-mini",
+                # model="gpt-4.1-mini-2025-04-14",
                 temperature=temperature,
                 max_retries=2,
                 streaming=streaming

@@ -57,6 +57,7 @@ async def websocket_probe_engine(websocket: WebSocket):
             survey_config = SurveyConfig(
                 language=survey_data.get("language", "English"),
                 add_context=survey_data.get("add_context", True),
+                repetition=survey_data.get("repetition", True),
             )
             survey = SimpleNamespace(
                 id=survey_response.su_id,
@@ -70,6 +71,7 @@ async def websocket_probe_engine(websocket: WebSocket):
                 quality_threshold=question_data.get("quality_threshold", 4),
                 gibberish_score=question_data.get("gibberish_score", 4),
                 add_context=question_data.get("add_context", True),
+                repetition=question_data.get("repetition", True),
             )
             question = SimpleNamespace(
                 id=survey_response.qs_id,
@@ -79,7 +81,13 @@ async def websocket_probe_engine(websocket: WebSocket):
             )
 
             repetition_checker = RepetitionChecker()
-            is_repetition = repetition_checker.check_repetition(survey_response)
+            
+            if survey_config.repetition:
+                is_repetition = repetition_checker.survey_check_repetition(survey_response)
+            elif question_config.repetition:
+                is_repetition = repetition_checker.question_check_repetition(survey_response)
+            else:
+                is_repetition = False
 
             try:
                 running_probe = None

@@ -105,27 +105,26 @@ class RepetitionChecker:
         """
         return re.sub(r"^Response\s+\d+\.\s*", "", raw).strip()
 
-    def check_repetition(self, survey_response: SurveyResponse) -> bool:
+    def _check_repetition(self, survey_response: SurveyResponse, pattern: str) -> bool:
         """
         Determine whether the user's current response is a repeat of a
-        previous response stored in Redis.
+        previous response stored in Redis for the given pattern.
 
         Steps:\n
-            1. Scan Redis for all keys matching the user's message store pattern.
+            1. Scan Redis for all keys matching the pattern.
             2. Select the key with the highest trailing index (most recent session).
             3. Read and parse that key.
             4. Filter to human-authored messages only.
             5. Compare the current response against cleaned content strings.
 
         Args:
-            survey_response: The incoming survey response object containing su_id, mo_id, qs_id, and response text.
+            survey_response: The incoming survey response object.
+            pattern: The Redis key pattern to scan.
 
         Returns:
             True  – if the current response already exists in the message history.
             False – if it is new, or if the message store could not be read.
         """
-        pattern = f"message_store:{survey_response.su_id}:{survey_response.mo_id}:*"
-
         # 1. Scan for matching keys
         try:
             matched_keys = list(self.redis_client.scan_iter(pattern))
@@ -163,3 +162,19 @@ class RepetitionChecker:
 
         # 6. Check for repetition
         return survey_response.response in past_responses
+
+    def survey_check_repetition(self, survey_response: SurveyResponse) -> bool:
+        """
+        Determine whether the user's current response is a repeat of a
+        previous response stored in Redis at the user level across the survey.
+        """
+        pattern = f"message_store:{survey_response.su_id}:{survey_response.mo_id}:*"
+        return self._check_repetition(survey_response, pattern)
+
+    def question_check_repetition(self, survey_response: SurveyResponse) -> bool:
+        """
+        Determine whether the user's current response is a repeat of a
+        previous response stored in Redis for the specific question.
+        """
+        pattern = f"message_store:{survey_response.su_id}:{survey_response.mo_id}:{survey_response.qs_id}:*"
+        return self._check_repetition(survey_response, pattern)

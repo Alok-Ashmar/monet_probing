@@ -20,6 +20,7 @@ class SurveyConfig(BaseModel):
     mediaAI: bool = False  # overall check for the feature
     add_context: bool = False
     adaptive_probing: bool = False
+    repetition: bool = False
 
 
 class SurveyMedia(BaseModel):
@@ -71,8 +72,9 @@ class QuestionConfig(BaseModel):
     )  # survey config media should be true in order for this to work
     add_context: bool = False
     allow_pasting: bool = False
-    quality_threshold: int = 4
-    gibberish_score: int = 7
+    quality_threshold: Optional[int] = 4
+    gibberish_score: Optional[int] = 4
+    repetition: bool = False
 
 
 # -- Base Survey Schemas
