@@ -74,6 +74,7 @@ class QuestionConfig(BaseModel):
     allow_pasting: bool = False
     quality_threshold: Optional[int] = 4
     gibberish_score: Optional[int] = 4
+    relevance_threshold: Optional[int] = 4
     repetition: bool = False
 
 

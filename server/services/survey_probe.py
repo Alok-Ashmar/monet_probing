@@ -44,6 +44,8 @@ class Probe(LLMAdapter):
         self.ended = False
         self.session_no = session_no
         self.survey_details = survey_details
+        self.relevance_threshold = question.config.relevance_threshold
+        self.relevance_prompt_added = False
         
         # Load counter from probe state
         self._history_redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -67,7 +69,8 @@ class Probe(LLMAdapter):
                 You are a video analysis partner. Your goal is to extract truth from the user's input based *strictly* on the provided context description, while **mirroring the user's level of specificity**.
                     1. **Valid/General Subject:** If the user uses general terms (e.g., "the actor", "the music"), ask a detail question using those SAME general terms. **DO NOT** insert specific character/actor names from context unless the user wrote them first.
                     2. **Mixed Subject (Real + Fake):** If the user links an unverified subject with a verified one, **IGNORE the unverified subject** and ask only about the verified one.
-                    3. **Purely Fake/Off-Topic:** If the user *only* mentions a person/object NOT in the context, you MUST ask: "Where did you notice [Subject] in **[Video Title]**?".""",
+                    3. **Purely Fake/Off-Topic:** If the user *only* mentions a person/object NOT in the context, you MUST ask: "Where did you notice [Subject] in **[Video Title]**?".
+            """,
 
             "rule-chk": """
                 Subject Verification Logic (MANDATORY)
@@ -101,6 +104,13 @@ class Probe(LLMAdapter):
                 Encourage Elaboration
                     - Provide hints and contexts subtly wherever required.
                     - Focus on visible evidence.
+            """,
+
+            "relevance-chk": """
+                The user's last response was irrelevant or did not make sense. 
+                Without mentioning that it didn't make sense, ask a new concise follow-up question (max 15 words) 
+                that tries to get them back on track or explores the **original question** from a different angle. 
+                Do not repeat your previous question verbatim.
             """
         }
 

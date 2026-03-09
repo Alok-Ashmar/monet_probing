@@ -5,6 +5,7 @@ from typing import Dict
 from types import SimpleNamespace
 from services.survey_probe import Probe
 from services.ServerLogger import ServerLogger
+from services.relevance_checker import RelevanceChecker
 from services.repetition_checker import RepetitionChecker
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models.schemas import SurveyResponse, SurveyConfig, QuestionConfig
@@ -55,28 +56,28 @@ async def websocket_probe_engine(websocket: WebSocket):
             question_data = cached_survey_details.get("question") or {}
 
             survey_config = SurveyConfig(
-                language=survey_data.get("language", "English"),
-                add_context=survey_data.get("add_context", True),
-                repetition=survey_data.get("repetition", True),
+                language=survey_data.get("language"),
+                add_context=survey_data.get("add_context"),
+                repetition=survey_data.get("repetition"),
             )
             survey = SimpleNamespace(
                 id=survey_response.su_id,
-                description=survey_data.get("survey_description", "-"),
+                description=survey_data.get("survey_description"),
                 config=survey_config,
             )
 
             question_config = QuestionConfig(
-                probes=question_data.get("min_probe", 0),
-                max_probes=question_data.get("max_probe", 0),
-                quality_threshold=question_data.get("quality_threshold", 4),
-                gibberish_score=question_data.get("gibberish_score", 4),
-                add_context=question_data.get("add_context", True),
-                repetition=question_data.get("repetition", True),
+                probes=question_data.get("min_probe"),
+                max_probes=question_data.get("max_probe"),
+                quality_threshold=question_data.get("quality_threshold"),
+                gibberish_score=question_data.get("gibberish_score"),
+                add_context=question_data.get("add_context"),
+                repetition=question_data.get("repetition"),
             )
             question = SimpleNamespace(
                 id=survey_response.qs_id,
-                question=question_data.get("question", ""),
-                description=question_data.get("question_description", ""),
+                question=question_data.get("question"),
+                description=question_data.get("question_description"),
                 config=question_config,
             )
 
@@ -90,6 +91,33 @@ async def websocket_probe_engine(websocket: WebSocket):
                 is_repetition = False
 
             try:
+                # If repetition is detected, send the default response payloads over the websocket
+                if is_repetition:
+                    await websocket.send_json({
+                        "error": False,
+                        "message": "streaming-started",
+                        "code": 200,
+                        "response": {
+                            "question": "",
+                            "min_probing": running_probe.question.config.probes,
+                            "max_probing": running_probe.question.config.max_probes,
+                            "is_repetition": True,
+                        }
+                    })
+                    await websocket.send_json({
+                        "error": False,
+                        "message": "streaming-ended",
+                        "code": 200,
+                        "response": {
+                            "question": "",
+                            "min_probing": running_probe.question.config.probes,
+                            "max_probing": running_probe.question.config.max_probes,
+                            "is_repetition": True,
+                        }
+                    })
+                    return
+                
+                # Initialize the probe
                 running_probe = None
                 state_key = _probe_state_key(str(survey_response.su_id), str(survey_response.qs_id), str(survey_response.mo_id))
                 cached_probe_state = _load_probe_state(state_key)
@@ -109,8 +137,12 @@ async def websocket_probe_engine(websocket: WebSocket):
                     }
                 }
                 ended_response = {}
-
+                
+                # Stream the metrics
                 async for metric in metric_stream:
+                    # Check for relevance threshold and update prompt if needed
+                    RelevanceChecker.check_and_update_prompt(running_probe, metric)
+
                     final_response["message"] = "streaming-started"
                     final_response["response"] = {
                         **final_response["response"],
@@ -121,7 +153,8 @@ async def websocket_probe_engine(websocket: WebSocket):
                     }
                     ended_response = final_response.copy()
                     ended_response["message"] = "streaming-ended"
-                    await websocket.send_json(final_response)
+                
+                await websocket.send_json(final_response)
 
                 if final_response["response"]["is_gibberish"] == False:
                     async for chunk in stream:
