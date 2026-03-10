@@ -1,14 +1,15 @@
 import os
 import json
 import pytz
-from redis import Redis
 from bson import ObjectId
 from datetime import datetime
 from typing import AsyncIterable
+from utils.redis_pool import get_redis
 from models.llm_adapter import LLMAdapter
-from services.ServerLogger import ServerLogger
+from utils.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
 from services.intent_extractor import extract_intent
+from utils.state_management import load_probe_state
 from models.response_metrics_schema import NSIGHT, NSIGHT_v2
 from models.schemas import PySurvey, PySurveyQuestion, SurveyResponse
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
@@ -46,20 +47,10 @@ class Probe(LLMAdapter):
         self.survey_details = survey_details
         self.relevance_threshold = question.config.relevance_threshold
         self.relevance_prompt_added = False
-        
-        # Load counter from probe state
+
+        # Shared async Redis client (used for probe state)
+        self._redis = get_redis()
         self._history_redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-        self._redis = Redis.from_url(self._history_redis_url)
-        
-        try:
-            state_key = f"probe_state:{self.su_id}:{self.qs_id}:{self.mo_id}"
-            cached_state = self._redis.get(state_key)
-            if cached_state:
-                state_dict = json.loads(cached_state)
-                if state_dict.get("session_no") == self.session_no:
-                    self.counter = int(state_dict.get("counter", 0))
-        except Exception as e:
-            logger.error(f"Failed to load counter from Redis state: {e}")
 
         if question.config.probes > question.config.max_probes:
             self.invalid = True
@@ -142,13 +133,28 @@ class Probe(LLMAdapter):
                 }
             ).text
 
+    async def init(self):
+        """
+        Async initialisation — performs all Redis IO and (optionally) an LLM
+        call for intent extraction.  Must be awaited after construction::
+
+            probe = Probe(...)
+            await probe.init()
+        """
+        # Load counter from probe state
+        cached_state = await load_probe_state(
+            str(self.su_id), str(self.qs_id), str(self.mo_id)
+        )
+        if cached_state.get("session_no") == self.session_no:
+            self.counter = int(cached_state.get("counter", 0))
+
         # survey question level context (switch) 
         if self.question.config.add_context:
-            extracted_intent = extract_intent(
+            extracted_intent = await extract_intent(
                 question_description=self.question.description,
                 question_text=self.question.question,
                 survey_details=self.survey_details,
-                invoke_fn=self.invoke,
+                ainvoke_fn=self.ainvoke,
                 logger=logger,
                 redis_client=self._redis,
                 ttl_seconds=int(os.environ.get("REDIS_TTL_SECONDS_INTENT", 86400)) # 24 hours
@@ -209,6 +215,8 @@ class Probe(LLMAdapter):
         )
 
         self._ensure_system_message()
+
+        return self
 
 
     def _session_id(self) -> str:

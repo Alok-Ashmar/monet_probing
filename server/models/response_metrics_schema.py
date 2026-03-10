@@ -1,7 +1,5 @@
 from typing import List
 from pydantic import BaseModel, Field
-# from models.LLMAdapter import LLMAdapter
-# from langchain_core.prompts import PromptTemplate
 
 class NSIGHT(BaseModel):
     """Metrics for evaluating LLM response quality and characteristics"""
@@ -44,21 +42,21 @@ class NSIGHT(BaseModel):
         description="Confusion/Uncertainty detected (0-10): 0=Confident, 5=Moderately uncertain, 10=Completely confused"
     )
     
-    negativity: int = Field(  # Renamed from "annoyed"
+    negativity: int = Field(
         ...,
         ge=0,
         le=10,
         description="Negative sentiment strength (0-10): 0=Positive/Neutral, 5=Mild frustration, 10=Hostile/Sarcastic"
     )
     
-    consistency: int = Field(  # Renamed and inverted from "contradicting"
+    consistency: int = Field(
         ...,
         ge=0,
         le=10,
         description="Internal consistency (0-10): 0=Self-contradictory, 5=Partially consistent, 10=Fully coherent"
     )
     
-    confidence: int = Field(  # Renamed and inverted from "hesitation"
+    confidence: int = Field(
         ...,
         ge=0,
         le=10,

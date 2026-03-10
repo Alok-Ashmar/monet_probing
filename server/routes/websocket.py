@@ -1,47 +1,35 @@
-import os
-import json
-from redis import Redis
 from typing import Dict
 from types import SimpleNamespace
 from services.survey_probe import Probe
-from services.ServerLogger import ServerLogger
+from utils.redis_pool import get_redis
+from utils.ServerLogger import ServerLogger
 from services.relevance_checker import RelevanceChecker
 from services.repetition_checker import RepetitionChecker
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models.schemas import SurveyResponse, SurveyConfig, QuestionConfig
+from utils.state_management import load_probe_state, load_survey_details
 
 websocket_router = APIRouter(prefix="/ws", tags=["websocket", "probe_engine"])
 logger = ServerLogger()
 
 active_connections: Dict[str, WebSocket] = {}
-redis_client = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
-
-def _probe_state_key(su_id: str, qs_id: str, mo_id: str) -> str:
-    return f"probe_state:{su_id}:{qs_id}:{mo_id}"
-
-def _load_probe_state(key: str) -> dict:
-    try:
-        cached = redis_client.get(key)
-        if not cached:
-            return {}
-        return json.loads(cached)
-    except Exception as e:
-        logger.error("Failed to load probe state from Redis")
-        logger.error(e)
-        return {}
 
 @websocket_router.websocket("/probe_engine")
 async def websocket_probe_engine(websocket: WebSocket):
     await websocket.accept()
     
+    redis = get_redis()
+    repetition_checker = RepetitionChecker(redis)
+
     try:
         while True:
             data = await websocket.receive_text()
             survey_response = SurveyResponse.model_validate_json(data)
 
             try:
-                redis_key = f"survey_details:{survey_response.su_id}:{survey_response.qs_id}"
-                cached_survey_details = json.loads(redis_client.get(redis_key))
+                cached_survey_details = await load_survey_details(
+                    str(survey_response.su_id), str(survey_response.qs_id)
+                )
                 
             except Exception as e:
                 logger.error("Failed to load survey details from Redis")
@@ -81,16 +69,21 @@ async def websocket_probe_engine(websocket: WebSocket):
                 config=question_config,
             )
 
-            repetition_checker = RepetitionChecker()
-            
             if survey_config.repetition:
-                is_repetition = repetition_checker.survey_check_repetition(survey_response)
+                is_repetition = await repetition_checker.survey_check_repetition(survey_response)
             elif question_config.repetition:
-                is_repetition = repetition_checker.question_check_repetition(survey_response)
+                is_repetition = await repetition_checker.question_check_repetition(survey_response)
             else:
                 is_repetition = False
 
             try:
+                # Initialize the probe
+                running_probe = None
+                cached_probe_state = await load_probe_state(
+                    str(survey_response.su_id), str(survey_response.qs_id), str(survey_response.mo_id)
+                )
+                session_no = int(cached_probe_state.get("session_no", 0))
+
                 # If repetition is detected, send the default response payloads over the websocket
                 if is_repetition:
                     await websocket.send_json({
@@ -99,8 +92,8 @@ async def websocket_probe_engine(websocket: WebSocket):
                         "code": 200,
                         "response": {
                             "question": "",
-                            "min_probing": running_probe.question.config.probes,
-                            "max_probing": running_probe.question.config.max_probes,
+                            "min_probing": question.config.probes,
+                            "max_probing": question.config.max_probes,
                             "is_repetition": True,
                         }
                     })
@@ -110,19 +103,17 @@ async def websocket_probe_engine(websocket: WebSocket):
                         "code": 200,
                         "response": {
                             "question": "",
-                            "min_probing": running_probe.question.config.probes,
-                            "max_probing": running_probe.question.config.max_probes,
+                            "min_probing": question.config.probes,
+                            "max_probing": question.config.max_probes,
                             "is_repetition": True,
                         }
                     })
-                    return
+                    running_probe = Probe(mo_id=survey_response.mo_id, metadata=survey, question=question, simple_store=True, session_no=session_no, survey_details=survey_response)
+                    await running_probe.init()
+                    continue
                 
-                # Initialize the probe
-                running_probe = None
-                state_key = _probe_state_key(str(survey_response.su_id), str(survey_response.qs_id), str(survey_response.mo_id))
-                cached_probe_state = _load_probe_state(state_key)
-                session_no = int(cached_probe_state.get("session_no", 0))
                 running_probe = Probe(mo_id=survey_response.mo_id, metadata=survey, question=question, simple_store=True, session_no=session_no, survey_details=survey_response)
+                await running_probe.init()
 
                 # Generate follow-up using the probe
                 stream, metric_stream = running_probe.gen_streamed_follow_up(survey_response.question, survey_response.response)

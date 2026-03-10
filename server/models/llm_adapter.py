@@ -79,3 +79,17 @@ class LLMAdapter:
             chain = prompt | self.llm
             response = chain.invoke(dependencies)
             return response.content
+
+    async def ainvoke(self, prompt: PromptTemplate | ChatPromptTemplate, dependencies: dict[str, str]) -> str:
+        """Async version of invoke – uses ``chain.ainvoke`` to avoid blocking the event loop."""
+        if self.__llm_name == "llama":
+            # Llama client is sync-only; fall back to sync invoke
+            return self.invoke(prompt, dependencies)
+        elif self.__llm_name == "ollama-mistral":
+            chain = prompt | self.llm
+            response = await chain.ainvoke(dependencies)
+            return response
+        else:
+            chain = prompt | self.llm
+            response = await chain.ainvoke(dependencies)
+            return response.content

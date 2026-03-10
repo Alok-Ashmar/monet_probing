@@ -1,9 +1,7 @@
-import os
 import re
 import json
-from redis import Redis
 from models.schemas import SurveyResponse
-from services.ServerLogger import ServerLogger
+from utils.ServerLogger import ServerLogger
 
 logger = ServerLogger()
 
@@ -19,13 +17,16 @@ class RepetitionChecker:
     Only the key with the highest index (most recent snapshot) is read.
     """
 
-    def __init__(self):
-        """Initialise the Redis client from the REDIS_URL environment variable."""
-        self.redis_client = Redis.from_url(
-            os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-        )
+    def __init__(self, redis_client):
+        """
+        Initialise with a shared async Redis client.
 
-    def _read_key(self, key: bytes) -> list | dict | None:
+        Args:
+            redis_client: An ``redis.asyncio.Redis`` instance.
+        """
+        self.redis_client = redis_client
+
+    async def _read_key(self, key: bytes) -> list | dict | None:
         """
         Read a Redis key using the appropriate command for its data type.
 
@@ -37,14 +38,14 @@ class RepetitionChecker:
         Returns:
             Parsed Python object (list, dict, or None).
         """
-        key_type = self.redis_client.type(key).decode("utf-8")
+        key_type = (await self.redis_client.type(key)).decode("utf-8")
 
         if key_type == "string":
-            raw = self.redis_client.get(key)
+            raw = await self.redis_client.get(key)
             return json.loads(raw) if raw else None
 
         elif key_type == "list":
-            items = self.redis_client.lrange(key, 0, -1)
+            items = await self.redis_client.lrange(key, 0, -1)
             result = []
             for item in items:
                 try:
@@ -54,7 +55,7 @@ class RepetitionChecker:
             return result
 
         elif key_type == "hash":
-            raw = self.redis_client.hgetall(key)
+            raw = await self.redis_client.hgetall(key)
             return {
                 (k.decode("utf-8") if isinstance(k, bytes) else k): (
                     json.loads(v) if v else None
@@ -63,7 +64,7 @@ class RepetitionChecker:
             }
 
         elif key_type == "set":
-            items = self.redis_client.smembers(key)
+            items = await self.redis_client.smembers(key)
             return [json.loads(item) if item else None for item in items]
 
         else:
@@ -105,12 +106,12 @@ class RepetitionChecker:
         """
         return re.sub(r"^Response\s+\d+\.\s*", "", raw).strip()
 
-    def _check_repetition(self, survey_response: SurveyResponse, pattern: str) -> bool:
+    async def _check_repetition(self, survey_response: SurveyResponse, pattern: str) -> bool:
         """
         Determine whether the user's current response is a repeat of a
         previous response stored in Redis for the given pattern.
 
-        Steps:\n
+        Steps:
             1. Scan Redis for all keys matching the pattern.
             2. Select the key with the highest trailing index (most recent session).
             3. Read and parse that key.
@@ -127,7 +128,9 @@ class RepetitionChecker:
         """
         # 1. Scan for matching keys
         try:
-            matched_keys = list(self.redis_client.scan_iter(pattern))
+            matched_keys = []
+            async for key in self.redis_client.scan_iter(pattern):
+                matched_keys.append(key)
         except Exception as e:
             logger.error(f"Failed to scan Redis keys for pattern: {pattern}")
             logger.error(str(e))
@@ -141,7 +144,7 @@ class RepetitionChecker:
 
         # 3. Read the key
         try:
-            msgs = self._read_key(latest_key)
+            msgs = await self._read_key(latest_key)
         except Exception as e:
             logger.error(f"Failed to read Redis key: {latest_key}")
             logger.error(str(e))
@@ -163,18 +166,18 @@ class RepetitionChecker:
         # 6. Check for repetition
         return survey_response.response in past_responses
 
-    def survey_check_repetition(self, survey_response: SurveyResponse) -> bool:
+    async def survey_check_repetition(self, survey_response: SurveyResponse) -> bool:
         """
         Determine whether the user's current response is a repeat of a
         previous response stored in Redis at the user level across the survey.
         """
         pattern = f"message_store:{survey_response.su_id}:{survey_response.mo_id}:*"
-        return self._check_repetition(survey_response, pattern)
+        return await self._check_repetition(survey_response, pattern)
 
-    def question_check_repetition(self, survey_response: SurveyResponse) -> bool:
+    async def question_check_repetition(self, survey_response: SurveyResponse) -> bool:
         """
         Determine whether the user's current response is a repeat of a
         previous response stored in Redis for the specific question.
         """
         pattern = f"message_store:{survey_response.su_id}:{survey_response.mo_id}:{survey_response.qs_id}:*"
-        return self._check_repetition(survey_response, pattern)
+        return await self._check_repetition(survey_response, pattern)

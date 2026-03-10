@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Awaitable
 from langchain_core.prompts import PromptTemplate
 
 
@@ -11,14 +11,14 @@ def _intent_key(survey_details: dict, logger) -> str:
     return question_key
 
 
-def _get_intent(redis_client, survey_details: dict, ttl_seconds: int, logger) -> str | None:
+async def _get_intent(redis_client, survey_details: dict, ttl_seconds: int, logger) -> str | None:
     try:
         key = _intent_key(survey_details, logger)
-        cached = redis_client.get(key)
+        cached = await redis_client.get(key)
         if cached is None:
             return None
         try:
-            redis_client.expire(key, ttl_seconds)
+            await redis_client.expire(key, ttl_seconds)
         except Exception as exc:
             logger.error(f"refresh_intent_ttl failed: {exc}")
         if isinstance(cached, bytes):
@@ -29,19 +29,19 @@ def _get_intent(redis_client, survey_details: dict, ttl_seconds: int, logger) ->
         return None
 
 
-def _store_intent(redis_client, ttl_seconds: int, survey_details: dict, intent: str, logger) -> None:
+async def _store_intent(redis_client, ttl_seconds: int, survey_details: dict, intent: str, logger) -> None:
     try:
         key = _intent_key(survey_details, logger)
-        redis_client.setex(key, ttl_seconds, intent)
+        await redis_client.setex(key, ttl_seconds, intent)
     except Exception as exc:
         logger.error(f"store_intent failed: {exc}")
 
 
-def extract_intent(
+async def extract_intent(
     question_description: str,
     question_text: str,
     survey_details: dict,
-    invoke_fn: Callable[[PromptTemplate, dict[str, str]], str],
+    ainvoke_fn: Callable[[PromptTemplate, dict[str, str]], Awaitable[str]],
     logger,
     redis_client,
     ttl_seconds: int,
@@ -51,7 +51,7 @@ def extract_intent(
     if not intent:
         return ""
 
-    cached = _get_intent(redis_client, survey_details, ttl_seconds, logger)
+    cached = await _get_intent(redis_client, survey_details, ttl_seconds, logger)
     if cached:
         return cached
 
@@ -69,10 +69,10 @@ def extract_intent(
     )
 
     try:
-        intent = invoke_fn(prompt, {"intent": intent, "question_text": question_text})
+        intent = await ainvoke_fn(prompt, {"intent": intent, "question_text": question_text})
     except Exception as exc:
         logger.error(f"extract_intent failed: {exc}")
-        _store_intent(redis_client, ttl_seconds, survey_details, intent, logger)
+        await _store_intent(redis_client, ttl_seconds, survey_details, intent, logger)
         return intent
 
     if isinstance(intent, str):
@@ -80,5 +80,5 @@ def extract_intent(
     else:
         final_intent = getattr(intent, "content", str(intent)).strip()
 
-    _store_intent(redis_client, ttl_seconds, survey_details, final_intent, logger)
+    await _store_intent(redis_client, ttl_seconds, survey_details, final_intent, logger)
     return final_intent
