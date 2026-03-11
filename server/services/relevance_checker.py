@@ -8,11 +8,11 @@ class RelevanceChecker:
         """
         # Extract relevance score from metric
         if isinstance(metric, dict):
-            relevance = metric.get("relevance", 0)
+            relevance = metric.get("relevance", None)
         else:
-            relevance = getattr(metric, "relevance", 0)
+            relevance = getattr(metric, "relevance", None)
             
-        if relevance < probe.relevance_threshold:
+        if relevance is not None and relevance < probe.relevance_threshold:
             RelevanceChecker.add_relevance_prompt(probe)
 
     @staticmethod
