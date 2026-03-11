@@ -1,8 +1,26 @@
 from typing import List
 from pydantic import BaseModel, Field
 
-class NSIGHT(BaseModel):
-    """Metrics for evaluating LLM response quality and characteristics"""
+class ImmediateEvaluation(BaseModel):
+    """Metrics for immediate evaluation like relevance and gibberish"""
+
+    relevance: int = Field(
+        ...,
+        ge=0,
+        le=10,
+        description="Relevance to original question (0-10): 0-3=Irrelevant, 4-5=Tangential, 6-7=Relevant, 8-10=Highly Relevant"
+    )
+
+    gibberish_score: int = Field(
+        ...,
+        ge=0,
+        le=10,
+        description="Compute a Gibberish Likelihood Score from 0 to 10 (inclusive) where 0 = meaningful natural language and 10 = garbled noise/corrupted text. Penalize high character randomness/entropy and meaningless repetition."
+    )
+
+
+class DetailedMetrics(BaseModel):
+    """Detailed metrics for evaluating LLM response quality and characteristics"""
     
     quality: int = Field(
         ...,
@@ -19,13 +37,6 @@ class NSIGHT(BaseModel):
             5. Substance over surface - don't rate high just because the user has used any character name or proper nouns. Evaluate the actual content and insights provided.
             6. Semantic quality - don't rate high just because the user has used some/many words that are present in context, prompt, question, or any other reference material. Go with meaning and genuine understanding; don't let keyword matching or superficial alignment influence the score. Focus on whether the response demonstrates true comprehension and adds value.
         """
-    )
-    
-    relevance: int = Field(
-        ...,
-        ge=0,
-        le=10,
-        description="Relevance to original question (0-10): 0-3=Irrelevant, 4-5=Tangential, 6-7=Relevant, 8-10=Highly Relevant"
     )
     
     detail: int = Field(
@@ -74,54 +85,10 @@ class NSIGHT(BaseModel):
         description="Reason for awarding the quality score."
     )
 
-    gibberish_score: int = Field(
-        ...,
-        ge=0,
-        le=10,
-        description="""
-            Task:
-            Compute a Gibberish Likelihood Score from 0 to 10 (inclusive).
 
-            Scale definition:
-                - 0 = clearly meaningful natural language or clearly intentional/valid code or logs.
-                - 10 = almost certainly gibberish, garbled noise, or corrupted text.
-                Do NOT use a 0–100 scale.
-
-            Method:
-            Compute the score as a calibrated confidence estimate by combining multiple independent cues.
-            Do NOT rely on a single clue.
-
-            Primary scoring cues (increase score when present):
-                1. High character-pattern randomness / entropy indicating corruption or noise.
-                2. Very low alphabetic-character ratio relative to total content.
-                3. Very low valid-word ratio (dictionary-like validity).
-                4. Implausible character transitions or n-gram sequences.
-                5. Repeated symbols, words, or phrases without semantic progression.
-
-            Anchors (select the band first, then fine-tune within it):
-                - 0–1: Fully coherent text or clearly intentional code/logs; typos or slang allowed.
-                - 1–3: Mostly coherent with minor noise or small corruption.
-                - 3–6: Mixed or ambiguous; intent partially recoverable; many malformed words.
-                - 6–8: Largely nonsensical; few valid words; heavy noise patterns or repetition.
-                - 8–10: Near-certain gibberish; random characters, encoding artifacts, or meaningless repetition.
-
-            Hard constraints:
-                - If valid-word ratio < 30% AND entropy is high → score MUST be ≥ 6.
-                - Repeated words, phrases, or symbol runs without semantic progression → score MUST be ≥ 6.
-                - Isolated valid words do NOT imply meaningful text.
-                - When cues conflict, prioritize entropy and sequence plausibility over the presence of real words.
-
-            Exclusions (do NOT lower the score solely due to these):
-                - Normal spelling mistakes
-                - Code-switching
-                - Domain-specific jargon
-                - Short or concise replies
-            These exclusions apply ONLY if sentence-level meaning is clearly recoverable.
-
-            Output:
-            Return ONLY a single numeric score from 0 to 10. No explanation.
-        """
-    )
+class NSIGHT(DetailedMetrics, ImmediateEvaluation):
+    """Combined Metrics for evaluating LLM response quality and characteristics"""
+    pass
 
 class NSIGHT_v2(NSIGHT):
     question: str = Field(

@@ -10,7 +10,7 @@ from utils.ServerLogger import ServerLogger
 from langchain_core.messages import SystemMessage
 from services.intent_extractor import extract_intent
 from utils.state_management import load_probe_state
-from models.response_metrics_schema import NSIGHT, NSIGHT_v2
+from models.response_metrics_schema import ImmediateEvaluation, DetailedMetrics, NSIGHT, NSIGHT_v2
 from models.schemas import PySurvey, PySurveyQuestion, SurveyResponse
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_community.chat_message_histories import RedisChatMessageHistory
@@ -34,7 +34,8 @@ class Probe(LLMAdapter):
         ):
         super().__init__(metadata.config.llm, 0.7, streaming=True)
         self.id = f"{metadata.id}:{mo_id}:{question.id}"
-        self.__metric_llm__ = self.llm.with_structured_output(NSIGHT.model_json_schema())
+        self.__immediate_eval_llm__ = self.llm.with_structured_output(ImmediateEvaluation.model_json_schema())
+        self.__detailed_metrics_llm__ = self.llm.with_structured_output(DetailedMetrics.model_json_schema())
         self.metadata = metadata
         self.counter = 0
         self.simple_store = simple_store
@@ -237,14 +238,14 @@ class Probe(LLMAdapter):
             self._history.add_ai_message(full_content)
 
 
-    def gen_streamed_follow_up(self, question: str, response: str) -> tuple[AsyncIterable[str], AsyncIterable[NSIGHT]]:
+    def gen_streamed_follow_up(self, question: str, response: str):
         user_text = f"Response {self.counter}. {response}"
         self._history.add_user_message(user_text)
         prompt = ChatPromptTemplate.from_messages(self._history.messages)
         chain = prompt | self.llm
-        metric_chain = prompt | self.__metric_llm__
+        immediate_chain = prompt | self.__immediate_eval_llm__
+        detailed_chain = prompt | self.__detailed_metrics_llm__
 
         llm_stream: str = self._stream_with_history_update(chain, {})
         
-        metric_llm_stream: NSIGHT = metric_chain.astream({})
-        return (llm_stream, metric_llm_stream)
+        return (llm_stream, immediate_chain.ainvoke({}), detailed_chain.ainvoke({}))

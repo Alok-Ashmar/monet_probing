@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict
 from types import SimpleNamespace
 from services.survey_probe import Probe
@@ -116,7 +117,7 @@ async def websocket_probe_engine(websocket: WebSocket):
                 await running_probe.init()
 
                 # Generate follow-up using the probe
-                stream, metric_stream = running_probe.gen_streamed_follow_up(survey_response.question, survey_response.response)
+                stream, immediate_coro, detailed_coro = running_probe.gen_streamed_follow_up(survey_response.question, survey_response.response)
                 final_response = {
                     "error": False,
                     "message": "streaming-started",
@@ -128,35 +129,89 @@ async def websocket_probe_engine(websocket: WebSocket):
                     }
                 }
                 ended_response = {}
-                
-                # Stream the metrics
-                async for metric in metric_stream:
-                    # Check for relevance threshold and update prompt if needed
-                    RelevanceChecker.check_and_update_prompt(running_probe, metric)
 
-                    final_response["message"] = "streaming-started"
-                    final_response["response"] = {
-                        **final_response["response"],
-                        "ended": True if metric.get("quality", 0) >= running_probe.question.config.quality_threshold else False,
-                        "metrics": metric,
-                        "is_gibberish": True if metric.get("gibberish_score", 0) > running_probe.question.config.gibberish_score else False,
-                        "is_repetition": is_repetition,
-                    }
-                    ended_response = final_response.copy()
-                    ended_response["message"] = "streaming-ended"
+                immediate_task = asyncio.create_task(immediate_coro)
+                detailed_task = asyncio.create_task(detailed_coro)
+                
+                queue = asyncio.Queue()
+                
+                async def consume_stream():
+                    try:
+                        async for chunk in stream:
+                            await queue.put(chunk)
+                        await queue.put(None)
+                    except asyncio.CancelledError:
+                        await queue.put(None)
+                
+                stream_task = asyncio.create_task(consume_stream())
+
+                # Await ONLY the immediate metrics first to minimize TTFT
+                immediate_metric = await immediate_task
+                
+                metric = {}
+                if isinstance(immediate_metric, dict):
+                    metric.update(immediate_metric)
+                elif hasattr(immediate_metric, "model_dump"):
+                    metric.update(immediate_metric.model_dump())
+                    
+                is_gibberish = metric.get("gibberish_score", 0) > running_probe.question.config.gibberish_score
+                
+                # If gibberish, cancel the stream task immediately to save tokens
+                if is_gibberish:
+                    stream_task.cancel()
+                    detailed_task.cancel()
+                    
+                # Check for relevance threshold and update prompt if needed
+                RelevanceChecker.check_and_update_prompt(running_probe, metric)
+
+                final_response["message"] = "streaming-started"
+                final_response["response"] = {
+                    **final_response["response"],
+                    "ended": running_probe.ended, # Default to probe state initially
+                    "metrics": metric,
+                    "is_gibberish": is_gibberish,
+                    "is_repetition": is_repetition,
+                }
                 
                 await websocket.send_json(final_response)
 
-                if final_response["response"]["is_gibberish"] == False:
-                    async for chunk in stream:
+                if not is_gibberish:
+                    while True:
+                        chunk = await queue.get()
+                        if chunk is None:
+                            break
+                        
+                        # Opportunistically inject detailed metrics into the stream payload if it finishes early
+                        if detailed_task.done() and "quality" not in metric and not detailed_task.cancelled():
+                            try:
+                                detailed_metric = detailed_task.result()
+                                if isinstance(detailed_metric, dict):
+                                    metric.update(detailed_metric)
+                                elif hasattr(detailed_metric, "model_dump"):
+                                    metric.update(detailed_metric.model_dump())
+                                final_response["response"]["metrics"] = metric
+                                final_response["response"]["ended"] = True if metric.get("quality", 0) >= running_probe.question.config.quality_threshold else False
+                            except Exception as e:
+                                logger.error(f"Error getting detailed_task result: {e}")
+
                         final_response["message"] = "streaming"
-                        final_response["response"] = {
-                            **final_response["response"],
-                            "question": chunk.content,
-                            "ended": running_probe.ended,
-                        }
+                        final_response["response"]["question"] = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                        
                         await websocket.send_json(final_response)
 
+                # Ensure detailed metrics have finished before sending streaming-ended
+                if not is_gibberish and not detailed_task.done() and not detailed_task.cancelled():
+                    detailed_metric = await detailed_task
+                    if isinstance(detailed_metric, dict):
+                        metric.update(detailed_metric)
+                    elif hasattr(detailed_metric, "model_dump"):
+                        metric.update(detailed_metric.model_dump())
+                    final_response["response"]["metrics"] = metric
+                    final_response["response"]["ended"] = True if metric.get("quality", 0) >= running_probe.question.config.quality_threshold else False
+
+                ended_response = final_response.copy()
+                ended_response["message"] = "streaming-ended"
+                ended_response["response"]["question"] = ""
                 await websocket.send_json(ended_response)
 
             except Exception as e:
